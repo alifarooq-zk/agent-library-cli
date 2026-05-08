@@ -1,0 +1,4 @@
+mode: generated
+target: both
+include:
+  - global/skills/writing-plans

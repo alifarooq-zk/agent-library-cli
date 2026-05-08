@@ -1,0 +1,6 @@
+version: 1
+mode: generated
+target: claude
+include:
+  - security/skills/review
+  - testing/skills/review

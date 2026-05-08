@@ -1,0 +1,7 @@
+version: 1
+mode: generated
+target: both
+include:
+  - global/skills/writing-plans
+  - global/commands/review-pr
+  - global/agents/security-reviewer

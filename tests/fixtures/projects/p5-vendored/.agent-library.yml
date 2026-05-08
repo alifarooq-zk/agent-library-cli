@@ -1,0 +1,5 @@
+version: 1
+mode: vendored
+target: claude
+include:
+  - frontend/skills/react-useeffect

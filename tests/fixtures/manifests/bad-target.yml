@@ -1,0 +1,5 @@
+version: 1
+mode: generated
+target: gemini
+include:
+  - global/skills/writing-plans

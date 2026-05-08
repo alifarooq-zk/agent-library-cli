@@ -1,0 +1,6 @@
+version: 1
+mode: generated
+target: both
+include:
+  - frontend/skills/react-useeffect
+  - global/agents/security-reviewer

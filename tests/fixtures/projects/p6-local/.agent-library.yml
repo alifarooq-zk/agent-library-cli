@@ -1,0 +1,6 @@
+version: 1
+mode: generated
+target: claude
+include:
+  - ./product/skills/domain-review
+  - global/skills/writing-plans

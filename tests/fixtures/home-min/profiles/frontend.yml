@@ -1,0 +1,4 @@
+include:
+  - global
+  - frontend/skills/react-useeffect
+  - frontend/skills/shadcn

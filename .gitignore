@@ -1,0 +1,5 @@
+node_modules/
+bin/agent-library
+tests/fixtures/**/.agents/
+tests/fixtures/**/.claude/
+tests/fixtures/**/.agent-library.lock
