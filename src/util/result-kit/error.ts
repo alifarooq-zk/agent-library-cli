@@ -5,7 +5,10 @@
  * while preserving a human-readable `message` and optional machine-readable
  * metadata.
  */
-export interface TypedError<TType extends string = string> {
+export interface TypedError<
+  TType extends string = string,
+  TDetails extends Record<string, unknown> = Record<string, unknown>,
+> {
   /**
    * Stable error discriminator used for narrowing, branching, and mapping.
    */
@@ -19,7 +22,7 @@ export interface TypedError<TType extends string = string> {
   /**
    * Optional serializable metadata describing the failure context.
    */
-  readonly details?: Record<string, unknown>;
+  readonly details?: TDetails;
 
   /**
    * Optional original cause for debugging or tracing.
@@ -43,6 +46,18 @@ export type TypedErrorOf<TType extends string> = TypedError<TType>;
 export type TypedErrorUnion<TType extends string> = TType extends string
   ? TypedError<TType>
   : never;
+
+export function typedError<
+  TType extends string,
+  TDetails extends Record<string, unknown> = Record<string, unknown>,
+>(input: {
+  readonly type: TType;
+  readonly message: string;
+  readonly details?: TDetails;
+  readonly cause?: unknown;
+}): TypedError<TType, TDetails> {
+  return input;
+}
 
 /**
  * Determines whether an unknown value satisfies the runtime contract of

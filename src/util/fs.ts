@@ -10,8 +10,13 @@ export async function writeFileAtomic(
   content: string | Uint8Array,
 ): Promise<void> {
   const tmp = `${filePath}.tmp`;
-  await Bun.write(tmp, content);
-  await rename(tmp, filePath);
+  try {
+    await Bun.write(tmp, content);
+    await rename(tmp, filePath);
+  } catch (error) {
+    await Bun.file(tmp).delete().catch(() => {});
+    throw error;
+  }
 }
 
 /**

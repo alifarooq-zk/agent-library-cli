@@ -1,5 +1,5 @@
-import { isTypedError, type TypedError } from './error';
-import { type Failure, type Result, type Success } from './result';
+import { isTypedError, type TypedError } from "./error";
+import { type Failure, type Result, type Success } from "./result";
 
 /**
  * Static utilities for creating, transforming, inspecting, and consuming
