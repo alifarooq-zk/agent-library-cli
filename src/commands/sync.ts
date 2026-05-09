@@ -6,6 +6,7 @@ import { ManifestSchema } from "../manifest/schema.ts";
 import { resolveIncludes } from "../resolve/sources.ts";
 import { resolveHomeRoot } from "../util/home.ts";
 import { buildPlan } from "../sync/plan.ts";
+import { writeArtifactId, writeTargetRelative } from "../sync/plan.ts";
 import { runGeneratedSync } from "../sync/generated.ts";
 import { runVendoredSync } from "../sync/vendored.ts";
 import { printSummary, countByKind } from "../sync/summary.ts";
@@ -46,7 +47,7 @@ export const syncCommand = new Command("sync")
 
       // Safe to parse into a typed Manifest now — structural validation already passed
       const manifest = ManifestSchema.parse(loaded.value);
-      const ctx = { homeRoot, projectRoot: absProjectRoot };
+      const ctx = { kind: "project" as const, homeRoot, projectRoot: absProjectRoot };
 
       // Resolve artifacts once; use the result for all subsequent validation and the plan
       const resolveResult = await resolveIncludes(manifest.include, ctx);
@@ -75,8 +76,8 @@ export const syncCommand = new Command("sync")
       // Detect target path collisions before writing anything
       const collisions = detectCollisions(
         plan.writes.map((w) => ({
-          artifactId: w.artifactId,
-          targetPath: w.targetRelative,
+          artifactId: writeArtifactId(w),
+          targetPath: writeTargetRelative(w),
         })),
       );
 

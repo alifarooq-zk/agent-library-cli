@@ -121,7 +121,11 @@ async function manifestFromStdinDefaults(
     });
   }
 
-  const resolved = await resolveIncludes(include, { homeRoot, projectRoot });
+  const resolved = await resolveIncludes(include, {
+    kind: "project",
+    homeRoot,
+    projectRoot,
+  });
   if (!resolved.ok) {
     return ResultKit.failure({
       type: "init_invalid_include" as const,
@@ -252,7 +256,11 @@ async function promptInclude(
     });
   }
 
-  const resolved = await resolveIncludes(all, { homeRoot, projectRoot });
+  const resolved = await resolveIncludes(all, {
+    kind: "project",
+    homeRoot,
+    projectRoot,
+  });
   if (!resolved.ok) {
     return ResultKit.failure({
       type: "init_invalid_include" as const,
