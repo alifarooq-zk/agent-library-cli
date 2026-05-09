@@ -1,7 +1,14 @@
 import { join } from "node:path";
-import type { Artifact } from "./types.ts";
+import {
+  absolutePath,
+  relativePath as toRelativePath,
+  type AbsolutePath,
+  type Artifact,
+  type RelativePath,
+} from "./types.ts";
 
 export type TargetDir = "codex" | "claude";
+export type TargetSelection = TargetDir | "both";
 
 /** Map a TargetDir to the filesystem directory name. */
 export const TARGET_DIR_NAME: Record<TargetDir, string> = {
@@ -11,11 +18,11 @@ export const TARGET_DIR_NAME: Record<TargetDir, string> = {
 
 export interface TargetFileSpec {
   /** The target directory ('codex' or 'claude'). */
-  targetDir: TargetDir;
+  readonly targetDir: TargetDir;
   /** Absolute path to the target file. */
-  filePath: string;
+  readonly filePath: AbsolutePath;
   /** Path relative to projectRoot, e.g. '.claude/skills/react-useeffect/SKILL.md' */
-  relativePath: string;
+  readonly relativePath: RelativePath;
 }
 
 /**
@@ -27,27 +34,48 @@ export interface TargetFileSpec {
 export function computeTargetSpecs(
   artifact: Artifact,
   projectRoot: string,
-  target: "codex" | "claude" | "both",
+  target: TargetSelection,
 ): TargetFileSpec[] {
   const dirs: TargetDir[] = target === "both" ? ["codex", "claude"] : [target];
 
   return dirs.map((dir) => {
     const dirName = TARGET_DIR_NAME[dir];
-    let relativePath: string;
+    let targetRelative: string;
 
     if (artifact.kind === "skill") {
-      relativePath = join(dirName, "skills", artifact.basename, "SKILL.md");
+      targetRelative = join(dirName, "skills", artifact.basename, "SKILL.md");
     } else if (artifact.kind === "command") {
-      relativePath = join(dirName, "commands", `${artifact.basename}.md`);
+      targetRelative = join(dirName, "commands", `${artifact.basename}.md`);
     } else {
       // agent
-      relativePath = join(dirName, "agents", `${artifact.basename}.md`);
+      targetRelative = join(dirName, "agents", `${artifact.basename}.md`);
     }
 
     return {
       targetDir: dir,
-      filePath: join(projectRoot, relativePath),
-      relativePath,
+      filePath: absolutePath(join(projectRoot, targetRelative)),
+      relativePath: toRelativePath(targetRelative),
     };
   });
+}
+
+export function computeBundledSkillTargetSpec(input: {
+  readonly projectRoot: string;
+  readonly targetDir: TargetDir;
+  readonly basename: string;
+  readonly relativeSourcePath: string;
+}): TargetFileSpec {
+  const dirName = TARGET_DIR_NAME[input.targetDir];
+  const targetRelative = join(
+    dirName,
+    "skills",
+    input.basename,
+    input.relativeSourcePath,
+  );
+
+  return {
+    targetDir: input.targetDir,
+    filePath: absolutePath(join(input.projectRoot, targetRelative)),
+    relativePath: toRelativePath(targetRelative),
+  };
 }

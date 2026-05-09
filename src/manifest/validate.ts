@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { parseDocument } from "yaml";
 import { ManifestSchema } from "./schema.ts";
 import type { Artifact } from "../artifact/types.ts";
@@ -58,7 +57,7 @@ export async function validateSkillSpecs(
 
   for (const artifact of artifacts) {
     if (artifact.kind !== "skill") continue;
-    const skillMdPath = join(artifact.sourceRoot, "SKILL.md");
+    const skillMdPath = artifact.primarySourceFile;
     const skillMdFile = Bun.file(skillMdPath);
     if (!(await skillMdFile.exists())) continue;
 

@@ -1,6 +1,12 @@
 import { join, basename } from "node:path";
 import { readdirSync, statSync, existsSync } from "node:fs";
-import type { Artifact, ArtifactKind } from "./types.ts";
+import {
+  createAgentArtifact,
+  createCommandArtifact,
+  createSkillArtifact,
+  type Artifact,
+  type ArtifactKind,
+} from "./types.ts";
 
 const SKILL_KINDS = ["skills"] as const;
 const COMMAND_KINDS = ["commands", "command"] as const;
@@ -18,15 +24,16 @@ export function classifyArtifact(
 ): Artifact | null {
   if (SKILL_KINDS.includes(category as (typeof SKILL_KINDS)[number])) {
     const dir = join(libraryRoot, domain, category, name);
-    if (existsSync(join(dir, "SKILL.md"))) {
-      return {
+    const primarySourceFile = join(dir, "SKILL.md");
+    if (existsSync(primarySourceFile)) {
+      return createSkillArtifact({
         id: `${domain}/${category}/${name}`,
-        kind: "skill",
-        sourceRoot: dir,
         domain,
         basename: name,
         libraryRoot,
-      };
+        rootDir: dir,
+        primarySourceFile,
+      });
     }
     return null;
   }
@@ -35,14 +42,13 @@ export function classifyArtifact(
     // name here is the stem (without .md)
     const file = join(libraryRoot, domain, category, `${name}.md`);
     if (existsSync(file)) {
-      return {
+      return createCommandArtifact({
         id: `${domain}/${category}/${name}`,
-        kind: "command",
-        sourceRoot: file,
         domain,
         basename: name,
         libraryRoot,
-      };
+        sourceFile: file,
+      });
     }
     return null;
   }
@@ -50,14 +56,13 @@ export function classifyArtifact(
   if (AGENT_KINDS.includes(category as (typeof AGENT_KINDS)[number])) {
     const file = join(libraryRoot, domain, category, `${name}.md`);
     if (existsSync(file)) {
-      return {
+      return createAgentArtifact({
         id: `${domain}/${category}/${name}`,
-        kind: "agent",
-        sourceRoot: file,
         domain,
         basename: name,
         libraryRoot,
-      };
+        sourceFile: file,
+      });
     }
     return null;
   }
