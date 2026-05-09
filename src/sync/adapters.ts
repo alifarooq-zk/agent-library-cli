@@ -55,8 +55,8 @@ export interface AdapterResult {
  * Returns the adapter source path when the file exists, or null.
  * Content is intentionally not read here — callers read it async during write.
  *
- * Skills:     <artifact.sourceRoot>/adapters/<target>.md
- * Commands/Agents: <dirname(sourceRoot)>/<basename>.adapters/<target>.md
+ * Skills:     <artifact.rootDir>/adapters/<target>.md
+ * Commands/Agents: <dirname(sourceFile)>/<basename>.adapters/<target>.md
  */
 export function findAdapter(
   artifact: Artifact,
@@ -65,10 +65,9 @@ export function findAdapter(
   let adapterPath: string;
 
   if (artifact.kind === "skill") {
-    adapterPath = join(artifact.sourceRoot, "adapters", `${target}.md`);
+    adapterPath = join(artifact.rootDir, "adapters", `${target}.md`);
   } else {
-    // command / agent: sourceRoot is the .md file path
-    const dir = dirname(artifact.sourceRoot);
+    const dir = dirname(artifact.sourceFile);
     adapterPath = join(dir, `${artifact.basename}.adapters`, `${target}.md`);
   }
 

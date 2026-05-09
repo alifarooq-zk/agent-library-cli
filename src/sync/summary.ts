@@ -1,17 +1,26 @@
 import type { SyncPlan } from "./plan.ts";
+import { writeArtifactId, writeArtifactKind } from "./plan.ts";
 
-export interface SyncSummaryData {
-  projectRoot: string;
-  mode: "generated" | "vendored";
-  target: "codex" | "claude" | "both";
-  skills: number;
-  commands: number;
-  agents: number;
-  removedStale: number;
-  vendoredSkipped?: { path: string; reason: string }[];
-  lockfile: string;
-  dryRun?: boolean;
+interface SyncSummaryBase {
+  readonly projectRoot: string;
+  readonly target: "codex" | "claude" | "both";
+  readonly skills: number;
+  readonly commands: number;
+  readonly agents: number;
+  readonly lockfile: string;
+  readonly dryRun: boolean;
 }
+
+export type SyncSummaryData =
+  | (SyncSummaryBase & {
+      readonly mode: "generated";
+      readonly removedStale: number;
+    })
+  | (SyncSummaryBase & {
+      readonly mode: "vendored";
+      readonly removedStale: 0;
+      readonly vendoredSkipped: readonly { path: string; reason: string }[];
+    });
 
 /**
  * Print the final sync summary matching the spec format exactly.
@@ -30,7 +39,7 @@ export function printSummary(data: SyncSummaryData): void {
   ];
 
   if (data.mode === "vendored") {
-    const skipped = data.vendoredSkipped ?? [];
+    const skipped = data.vendoredSkipped;
     const locallyEditedCount = skipped.filter(
       (item) => item.reason === "locally edited",
     ).length;
@@ -54,7 +63,7 @@ export function countByKind(plan: SyncPlan): {
   // Deduplicate by artifactId (same artifact appears once per targetDir)
   const seen = new Map<string, string>();
   for (const w of plan.writes) {
-    seen.set(w.artifactId, w.artifactKind);
+    seen.set(writeArtifactId(w), writeArtifactKind(w));
   }
 
   let skills = 0;

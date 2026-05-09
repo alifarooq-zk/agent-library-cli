@@ -1,19 +1,32 @@
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import type { Lockfile } from "../lockfile/schema.ts";
-import { hashBytes, hashFile } from "../lockfile/hash.ts";
+import { hashFile } from "../lockfile/hash.ts";
 import { readLockfile, type LockfileReadError } from "../lockfile/read.ts";
 import { writeLockfile, type LockfileWriteError } from "../lockfile/write.ts";
 import { writeFileAtomic } from "../util/fs.ts";
-import type { PlanFileWrite, SyncPlan } from "./plan.ts";
+import type { SyncPlan } from "./plan.ts";
+import {
+  writeArtifactId,
+  writeTargetFile,
+  writeTargetRelative,
+} from "./plan.ts";
 import { buildContent, type SyncRunOptions } from "./generated.ts";
 import { ResultKit, type Result } from "../util/result-kit/index.ts";
-// @ts-ignore — resolveJsonModule + allowImportingTsExtensions handles this
-import pkg from "../../package.json";
+import { syncFileError, type SyncFileError } from "./errors.ts";
+import {
+  buildLockfileFromTargetEntries,
+  existingTargetLockEntry,
+  writtenTargetLockEntry,
+  type LockfileTargetAdapter,
+  type TargetLockEntry,
+} from "./lockfile.ts";
 
 export interface VendoredSkippedFile {
   path: string;
   sourceArtifact: string;
-  reason: "locally edited" | "pre-existing file, no lockfile to verify ownership";
+  reason:
+    | "locally edited"
+    | "pre-existing file, no lockfile to verify ownership";
 }
 
 export interface VendoredSyncResult {
@@ -21,19 +34,14 @@ export interface VendoredSyncResult {
   skipped: VendoredSkippedFile[];
 }
 
-export type VendoredSyncError = LockfileReadError | LockfileWriteError;
+export type VendoredSyncError =
+  | LockfileReadError
+  | LockfileWriteError
+  | SyncFileError;
 
 interface PreviousTargetEntry {
   targetHash: string;
-  adapterSource: string | null;
-  adapterHash: string | null;
-}
-
-interface TargetLockEntry {
-  write: PlanFileWrite;
-  targetHash: string;
-  adapterSource: string | null;
-  adapterHash: string | null;
+  adapter: LockfileTargetAdapter;
 }
 
 export async function runVendoredSync(
@@ -42,7 +50,7 @@ export async function runVendoredSync(
 ): Promise<Result<VendoredSyncResult, VendoredSyncError>> {
   if (options.dryRun) {
     for (const w of plan.writes) {
-      process.stdout.write(`[dry-run] would write ${w.targetRelative}\n`);
+      process.stdout.write(`[dry-run] would write ${writeTargetRelative(w)}\n`);
     }
     return ResultKit.success({ written: 0, skipped: [] });
   }
@@ -57,49 +65,102 @@ export async function runVendoredSync(
   const skipped: VendoredSkippedFile[] = [];
 
   for (const w of plan.writes) {
-    const previous = previousTargets.get(w.targetRelative) ?? null;
-    const targetExists = await Bun.file(w.targetFile).exists();
-    const content = await buildContent(w, plan);
+    const targetRelative = writeTargetRelative(w);
+    const previous = previousTargets.get(targetRelative) ?? null;
+    const targetExistsResult = await ResultKit.fromPromise(
+      Bun.file(writeTargetFile(w)).exists(),
+      (cause) =>
+        syncFileError({
+          type: "sync_file_stat_error",
+          path: writeTargetFile(w),
+          role: "stat vendored target",
+          cause,
+        }),
+    );
+    if (!targetExistsResult.ok) return targetExistsResult;
 
-    if (!targetExists) {
-      await writeFileAtomic(w.targetFile, content);
-      writtenContents.set(w.targetRelative, content);
-      targetEntries.push(await writtenTargetEntry(w, content));
+    if (!targetExistsResult.value) {
+      const contentResult = await buildContent(w, plan);
+      if (!contentResult.ok) return contentResult;
+
+      const writeResult = await ResultKit.fromPromise(
+        writeFileAtomic(writeTargetFile(w), contentResult.value),
+        (cause) =>
+          syncFileError({
+            type: "sync_file_write_error",
+            path: writeTargetFile(w),
+            role: "write vendored target",
+            cause,
+          }),
+      );
+      if (!writeResult.ok) return writeResult;
+
+      writtenContents.set(targetRelative, contentResult.value);
+      const entryResult = await writtenTargetLockEntry(w, contentResult.value);
+      if (!entryResult.ok) return entryResult;
+      targetEntries.push(entryResult.value);
       continue;
     }
 
     if (!previous) {
       skipped.push({
-        path: w.targetRelative,
-        sourceArtifact: w.artifactId,
+        path: targetRelative,
+        sourceArtifact: writeArtifactId(w),
         reason: "pre-existing file, no lockfile to verify ownership",
       });
       continue;
     }
 
-    const currentTargetHash = await hashFile(w.targetFile);
+    const currentTargetHashResult = await ResultKit.fromPromise(
+      hashFile(writeTargetFile(w)),
+      (cause) =>
+        syncFileError({
+          type: "sync_file_read_error",
+          path: writeTargetFile(w),
+          role: "hash vendored target",
+          cause,
+        }),
+    );
+    if (!currentTargetHashResult.ok) return currentTargetHashResult;
+
+    const currentTargetHash = currentTargetHashResult.value;
     if (currentTargetHash === previous.targetHash) {
-      await writeFileAtomic(w.targetFile, content);
-      writtenContents.set(w.targetRelative, content);
-      targetEntries.push(await writtenTargetEntry(w, content));
+      const contentResult = await buildContent(w, plan);
+      if (!contentResult.ok) return contentResult;
+
+      const writeResult = await ResultKit.fromPromise(
+        writeFileAtomic(writeTargetFile(w), contentResult.value),
+        (cause) =>
+          syncFileError({
+            type: "sync_file_write_error",
+            path: writeTargetFile(w),
+            role: "write vendored target",
+            cause,
+          }),
+      );
+      if (!writeResult.ok) return writeResult;
+
+      writtenContents.set(targetRelative, contentResult.value);
+      const entryResult = await writtenTargetLockEntry(w, contentResult.value);
+      if (!entryResult.ok) return entryResult;
+      targetEntries.push(entryResult.value);
       continue;
     }
 
     skipped.push({
-      path: w.targetRelative,
-      sourceArtifact: w.artifactId,
+      path: targetRelative,
+      sourceArtifact: writeArtifactId(w),
       reason: "locally edited",
     });
-    targetEntries.push({
-      write: w,
-      targetHash: previous.targetHash,
-      adapterSource: previous.adapterSource,
-      adapterHash: previous.adapterHash,
-    });
+    targetEntries.push(
+      existingTargetLockEntry(w, previous.targetHash, previous.adapter),
+    );
   }
 
-  const lockfile = await buildVendoredLockfile(plan, targetEntries);
-  const writeResult = await writeLockfile(lockfilePath, lockfile);
+  const lockfile = await buildLockfileFromTargetEntries(plan, targetEntries);
+  if (!lockfile.ok) return lockfile;
+
+  const writeResult = await writeLockfile(lockfilePath, lockfile.value);
   if (!writeResult.ok) return writeResult;
 
   for (const s of skipped) {
@@ -122,89 +183,11 @@ function indexPreviousTargets(
       for (const target of file.targets) {
         targets.set(target.path, {
           targetHash: target.targetHash,
-          adapterSource: target.adapterSource,
-          adapterHash: target.adapterHash,
+          adapter: target.adapter,
         });
       }
     }
   }
 
   return targets;
-}
-
-async function writtenTargetEntry(
-  write: PlanFileWrite,
-  content: string | Uint8Array,
-): Promise<TargetLockEntry> {
-  let adapterHash: string | null = null;
-  if (write.adapterSource) {
-    const adapterBytes = await Bun.file(write.adapterSource).bytes();
-    adapterHash = hashBytes(adapterBytes);
-  }
-
-  return {
-    write,
-    targetHash: hashBytes(
-      typeof content === "string" ? Buffer.from(content, "utf8") : content,
-    ),
-    adapterSource: write.adapterSource
-      ? relative(write.libraryRoot, write.adapterSource)
-      : null,
-    adapterHash,
-  };
-}
-
-async function buildVendoredLockfile(
-  plan: SyncPlan,
-  targetEntries: TargetLockEntry[],
-): Promise<Lockfile> {
-  const byArtifact = new Map<string, Map<string, TargetLockEntry[]>>();
-
-  for (const entry of targetEntries) {
-    const artifactEntries = byArtifact.get(entry.write.artifactId) ?? new Map();
-    const fileEntries = artifactEntries.get(entry.write.sourceFile) ?? [];
-    fileEntries.push(entry);
-    artifactEntries.set(entry.write.sourceFile, fileEntries);
-    byArtifact.set(entry.write.artifactId, artifactEntries);
-  }
-
-  const artifacts: Lockfile["artifacts"] = [];
-
-  for (const [artifactId, bySource] of byArtifact) {
-    const firstEntry = bySource.values().next().value![0] as TargetLockEntry;
-    const files: Lockfile["artifacts"][number]["files"] = [];
-
-    for (const [sourceFile, entries] of bySource) {
-      const sourceBytes = await Bun.file(sourceFile).bytes();
-      const sourceHash = hashBytes(sourceBytes);
-      const relSource = relative(firstEntry.write.libraryRoot, sourceFile);
-
-      files.push({
-        source: relSource,
-        sourceHash,
-        targets: entries.map((entry) => ({
-          path: entry.write.targetRelative,
-          targetHash: entry.targetHash,
-          adapterSource: entry.adapterSource,
-          adapterHash: entry.adapterHash,
-        })),
-      });
-    }
-
-    artifacts.push({
-      id: artifactId,
-      kind: firstEntry.write.artifactKind,
-      files,
-    });
-  }
-
-  return {
-    version: 1,
-    cliVersion: (pkg as { version: string }).version,
-    mode: plan.mode,
-    target: plan.target,
-    syncedAt: new Date().toISOString(),
-    include: plan.include,
-    artifacts,
-  };
 }

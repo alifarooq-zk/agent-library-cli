@@ -1,16 +1,20 @@
-import { relative, join } from "node:path";
+import { join } from "node:path";
 import type { SyncPlan, PlanFileWrite } from "./plan.ts";
+import {
+  writeAdapterSource,
+  writeArtifactId,
+  writeTargetFile,
+  writeTargetRelative,
+} from "./plan.ts";
 import { renderHeader } from "./header.ts";
 import { mergeWithAdapter } from "./adapters.ts";
 import { writeFileAtomic } from "../util/fs.ts";
 import { readLockfile, type LockfileReadError } from "../lockfile/read.ts";
 import { writeLockfile, type LockfileWriteError } from "../lockfile/write.ts";
-import { hashBytes, hashFile } from "../lockfile/hash.ts";
 import { cleanupStaleFiles, findStaleGeneratedTargets } from "./cleanup.ts";
-import type { Lockfile } from "../lockfile/schema.ts";
 import { ResultKit, type Result } from "../util/result-kit/index.ts";
-// @ts-ignore — resolveJsonModule + allowImportingTsExtensions handles this
-import pkg from "../../package.json";
+import { buildLockfileFromWrittenContents } from "./lockfile.ts";
+import { syncFileError, type SyncFileError } from "./errors.ts";
 
 export interface GeneratedSyncResult {
   written: number;
@@ -21,7 +25,10 @@ export interface SyncRunOptions {
   dryRun?: boolean;
 }
 
-export type GeneratedSyncError = LockfileReadError | LockfileWriteError;
+export type GeneratedSyncError =
+  | LockfileReadError
+  | LockfileWriteError
+  | SyncFileError;
 
 /**
  * Execute a generated-mode sync plan.
@@ -39,11 +46,11 @@ export async function runGeneratedSync(
   const previousLockfileResult = await readLockfile(lockfilePath);
   if (!previousLockfileResult.ok) return previousLockfileResult;
   const previousLockfile = previousLockfileResult.value;
-  const newTargetPaths = new Set(plan.writes.map((w) => w.targetRelative));
+  const newTargetPaths = new Set(plan.writes.map(writeTargetRelative));
 
   if (options.dryRun) {
     for (const w of plan.writes) {
-      process.stdout.write(`[dry-run] would write ${w.targetRelative}\n`);
+      process.stdout.write(`[dry-run] would write ${writeTargetRelative(w)}\n`);
     }
 
     if (previousLockfile) {
@@ -67,15 +74,36 @@ export async function runGeneratedSync(
 
   // 2. Write all files, collect content for hashing
   const writtenContents = new Map<string, string | Uint8Array>(); // targetRelative -> content
+  const writtenTargets: string[] = [];
 
   for (const w of plan.writes) {
-    const content = await buildContent(w, plan);
-    await writeFileAtomic(w.targetFile, content);
-    writtenContents.set(w.targetRelative, content);
+    const targetRelative = writeTargetRelative(w);
+    const contentResult = await buildContent(w, plan);
+    if (!contentResult.ok) return contentResult;
+
+    const writeResult = await ResultKit.fromPromise(
+      writeFileAtomic(writeTargetFile(w), contentResult.value),
+      (cause) =>
+        syncFileError({
+          type: "sync_file_write_error",
+          path: writeTargetFile(w),
+          role: "write generated target",
+          cause,
+          writtenTargets,
+        }),
+    );
+    if (!writeResult.ok) return writeResult;
+
+    writtenContents.set(targetRelative, contentResult.value);
+    writtenTargets.push(targetRelative);
   }
 
   // 3. Build the new lockfile by grouping writes by artifact then source file
-  const lockfile = await buildLockfile(plan, writtenContents);
+  const lockfile = await buildLockfileFromWrittenContents(
+    plan,
+    writtenContents,
+  );
+  if (!lockfile.ok) return lockfile;
 
   // 4. Run stale-file cleanup against previous lockfile
   let removedStale = 0;
@@ -94,7 +122,7 @@ export async function runGeneratedSync(
   }
 
   // 5. Write new lockfile
-  const writeResult = await writeLockfile(lockfilePath, lockfile);
+  const writeResult = await writeLockfile(lockfilePath, lockfile.value);
   if (!writeResult.ok) return writeResult;
 
   return ResultKit.success({ written: plan.writes.length, removedStale });
@@ -103,98 +131,49 @@ export async function runGeneratedSync(
 export async function buildContent(
   w: PlanFileWrite,
   plan: SyncPlan,
-): Promise<string | Uint8Array> {
-  if (w.isMarkdown) {
-    const header = renderHeader({ source: w.artifactId, mode: plan.mode });
-    const neutral = await Bun.file(w.sourceFile).text();
-    const adapter = w.adapterSource
-      ? await Bun.file(w.adapterSource).text()
-      : null;
-    return mergeWithAdapter({
-      header,
-      neutral,
-      adapter,
-      preserveFrontmatter: w.artifactKind === "skill",
-    });
+): Promise<Result<string | Uint8Array, SyncFileError>> {
+  if (w.source.contentKind === "markdown") {
+    const header = renderHeader({ source: writeArtifactId(w), mode: plan.mode });
+    const neutralResult = await ResultKit.fromPromise(
+      Bun.file(w.source.filePath).text(),
+      (cause) =>
+        syncFileError({
+          type: "sync_file_read_error",
+          path: w.source.filePath,
+          role: "read source",
+          cause,
+        }),
+    );
+    if (!neutralResult.ok) return neutralResult;
+
+    const adapterSource = writeAdapterSource(w);
+    const adapterResult = adapterSource
+      ? await ResultKit.fromPromise(Bun.file(adapterSource).text(), (cause) =>
+          syncFileError({
+            type: "sync_file_read_error",
+            path: adapterSource,
+            role: "read adapter",
+            cause,
+          }),
+        )
+      : ResultKit.success(null);
+    if (!adapterResult.ok) return adapterResult;
+
+    return ResultKit.success(
+      mergeWithAdapter({
+        header,
+        neutral: neutralResult.value,
+        adapter: adapterResult.value,
+        preserveFrontmatter: w.source.preserveFrontmatter,
+      }),
+    );
   }
-  return Bun.file(w.sourceFile).bytes();
-}
-
-async function buildLockfile(
-  plan: SyncPlan,
-  writtenContents: Map<string, string | Uint8Array>,
-): Promise<Lockfile> {
-  // Group writes: artifactId -> sourceFile -> PlanFileWrite[]
-  const byArtifact = new Map<string, Map<string, PlanFileWrite[]>>();
-
-  for (const w of plan.writes) {
-    if (!byArtifact.has(w.artifactId)) {
-      byArtifact.set(w.artifactId, new Map());
-    }
-    const bySource = byArtifact.get(w.artifactId)!;
-    if (!bySource.has(w.sourceFile)) {
-      bySource.set(w.sourceFile, []);
-    }
-    bySource.get(w.sourceFile)!.push(w);
-  }
-
-  const artifacts: Lockfile["artifacts"] = [];
-
-  for (const [artifactId, bySource] of byArtifact) {
-    const firstWrite = bySource.values().next().value![0] as PlanFileWrite;
-    const files: Lockfile["artifacts"][number]["files"] = [];
-
-    for (const [sourceFile, writes] of bySource) {
-      const sourceBytes = await Bun.file(sourceFile).bytes();
-      const sourceHash = hashBytes(sourceBytes);
-      const relSource = relative(firstWrite.libraryRoot, sourceFile);
-
-      const targets: Lockfile["artifacts"][number]["files"][number]["targets"] =
-        [];
-
-      for (const w of writes) {
-        const content = writtenContents.get(w.targetRelative);
-        const targetHash = content
-          ? hashBytes(
-              typeof content === "string"
-                ? Buffer.from(content, "utf8")
-                : content,
-            )
-          : await hashFile(w.targetFile);
-
-        let adapterHash: string | null = null;
-        if (w.adapterSource) {
-          const adapterBytes = await Bun.file(w.adapterSource).bytes();
-          adapterHash = hashBytes(adapterBytes);
-        }
-
-        targets.push({
-          path: w.targetRelative,
-          targetHash,
-          adapterSource: w.adapterSource
-            ? relative(firstWrite.libraryRoot, w.adapterSource)
-            : null,
-          adapterHash,
-        });
-      }
-
-      files.push({ source: relSource, sourceHash, targets });
-    }
-
-    artifacts.push({
-      id: artifactId,
-      kind: firstWrite.artifactKind,
-      files,
-    });
-  }
-
-  return {
-    version: 1,
-    cliVersion: (pkg as { version: string }).version,
-    mode: plan.mode,
-    target: plan.target,
-    syncedAt: new Date().toISOString(),
-    include: plan.include,
-    artifacts,
-  };
+  return ResultKit.fromPromise(Bun.file(w.source.filePath).bytes(), (cause) =>
+    syncFileError({
+      type: "sync_file_read_error",
+      path: w.source.filePath,
+      role: "read source",
+      cause,
+    }),
+  );
 }

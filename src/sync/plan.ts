@@ -1,44 +1,48 @@
 import { join, relative, extname } from "node:path";
 // Bun has no sync dir-walk API; node:fs is intentional here
 import { readdirSync, statSync } from "node:fs";
-import type { Artifact } from "../artifact/types.ts";
+import {
+  absolutePath,
+  type AbsolutePath,
+  type Artifact,
+  type RelativePath,
+} from "../artifact/types.ts";
 import type { Manifest } from "../manifest/schema.ts";
 import {
+  computeBundledSkillTargetSpec,
   computeTargetSpecs,
-  TARGET_DIR_NAME,
+  type TargetFileSpec,
   type TargetDir,
+  type TargetSelection,
 } from "../artifact/target.ts";
 import { findAdapter } from "./adapters.ts";
 
+export type PlannedContentKind = "markdown" | "binary";
+
+export interface PlannedSourceFile {
+  readonly filePath: AbsolutePath;
+  readonly contentKind: PlannedContentKind;
+  readonly preserveFrontmatter: boolean;
+}
+
+export type PlanAdapterSpec =
+  | { readonly kind: "none" }
+  | { readonly kind: "applied"; readonly sourceFile: AbsolutePath };
+
 export interface PlanFileWrite {
-  artifactId: string;
-  artifactKind: "skill" | "command" | "agent";
-  /** Absolute path to the source file. */
-  sourceFile: string;
-  /** Absolute path to the target file under projectRoot. */
-  targetFile: string;
-  /** Path relative to projectRoot. */
-  targetRelative: string;
-  /** Whether this is a markdown file (gets a header prepended). */
-  isMarkdown: boolean;
-  /** Target side: 'codex' or 'claude'. */
-  targetDir: TargetDir;
-  /**
-   * Absolute path to the adapter source file for this target, or null if no adapter exists.
-   * Populated only for primary markdown files (SKILL.md / command / agent).
-   */
-  adapterSource: string | null;
-  /** Absolute path to the library root that owns this artifact (for computing relative source paths). */
-  libraryRoot: string;
+  readonly artifact: Artifact;
+  readonly source: PlannedSourceFile;
+  readonly target: TargetFileSpec;
+  readonly adapter: PlanAdapterSpec;
 }
 
 export interface SyncPlan {
-  mode: "generated" | "vendored";
-  target: "codex" | "claude" | "both";
-  projectRoot: string;
+  readonly mode: "generated" | "vendored";
+  readonly target: TargetSelection;
+  readonly projectRoot: AbsolutePath;
   /** Original manifest include entries (for lockfile). */
-  include: string[];
-  writes: PlanFileWrite[];
+  readonly include: readonly string[];
+  readonly writes: readonly PlanFileWrite[];
 }
 
 /**
@@ -81,66 +85,59 @@ export function buildPlan(
 
       // Primary file: SKILL.md
       for (const spec of specs) {
-        const sourceFile = join(artifact.sourceRoot, "SKILL.md");
         const adapter = findAdapter(artifact, spec.targetDir);
-        writes.push({
-          artifactId: artifact.id,
-          artifactKind: artifact.kind,
-          sourceFile,
-          targetFile: spec.filePath,
-          targetRelative: spec.relativePath,
-          isMarkdown: true,
-          targetDir: spec.targetDir,
-          adapterSource: adapter ? adapter.sourcePath : null,
-          libraryRoot: artifact.libraryRoot,
-        });
+        writes.push(
+          plannedWrite({
+            artifact,
+            sourceFile: artifact.primarySourceFile,
+            contentKind: "markdown",
+            preserveFrontmatter: true,
+            target: spec,
+            adapterSource: adapter ? adapter.sourcePath : null,
+          }),
+        );
       }
 
       // Bundled files: everything in the skill folder except SKILL.md and adapters/
-      const allFiles = collectFiles(artifact.sourceRoot, "adapters");
+      const allFiles = collectFiles(artifact.rootDir, "adapters");
       for (const absFile of allFiles) {
-        const relFromSkillRoot = relative(artifact.sourceRoot, absFile);
+        const relFromSkillRoot = relative(artifact.rootDir, absFile);
         if (relFromSkillRoot === "SKILL.md") continue; // already handled above
 
         const isMarkdown = extname(absFile).toLowerCase() === ".md";
 
         for (const dir of targetDirs) {
-          const dirName = TARGET_DIR_NAME[dir];
-          const targetRelative = join(
-            dirName,
-            "skills",
-            artifact.basename,
-            relFromSkillRoot,
+          writes.push(
+            plannedWrite({
+              artifact,
+              sourceFile: absFile,
+              contentKind: isMarkdown ? "markdown" : "binary",
+              preserveFrontmatter: isMarkdown,
+              target: computeBundledSkillTargetSpec({
+                projectRoot,
+                targetDir: dir,
+                basename: artifact.basename,
+                relativeSourcePath: relFromSkillRoot,
+              }),
+              adapterSource: null,
+            }),
           );
-          writes.push({
-            adapterSource: null,
-            artifactId: artifact.id,
-            artifactKind: artifact.kind,
-            sourceFile: absFile,
-            targetFile: join(projectRoot, targetRelative),
-            targetRelative,
-            isMarkdown,
-            targetDir: dir,
-            libraryRoot: artifact.libraryRoot,
-          });
         }
       }
     } else if (artifact.kind === "command" || artifact.kind === "agent") {
-      // sourceRoot for commands/agents is the absolute path to the .md file itself
       const specs = computeTargetSpecs(artifact, projectRoot, manifest.target);
       for (const spec of specs) {
         const adapter = findAdapter(artifact, spec.targetDir);
-        writes.push({
-          artifactId: artifact.id,
-          artifactKind: artifact.kind,
-          sourceFile: artifact.sourceRoot,
-          targetFile: spec.filePath,
-          targetRelative: spec.relativePath,
-          isMarkdown: true,
-          targetDir: spec.targetDir,
-          adapterSource: adapter ? adapter.sourcePath : null,
-          libraryRoot: artifact.libraryRoot,
-        });
+        writes.push(
+          plannedWrite({
+            artifact,
+            sourceFile: artifact.sourceFile,
+            contentKind: "markdown",
+            preserveFrontmatter: false,
+            target: spec,
+            adapterSource: adapter ? adapter.sourcePath : null,
+          }),
+        );
       }
     }
   }
@@ -148,8 +145,58 @@ export function buildPlan(
   return {
     mode: manifest.mode,
     target: manifest.target,
-    projectRoot,
+    projectRoot: absolutePath(projectRoot),
     include: manifest.include,
     writes,
   };
+}
+
+function plannedWrite(input: {
+  readonly artifact: Artifact;
+  readonly sourceFile: string;
+  readonly contentKind: PlannedContentKind;
+  readonly preserveFrontmatter: boolean;
+  readonly target: TargetFileSpec;
+  readonly adapterSource: string | null;
+}): PlanFileWrite {
+  return {
+    artifact: input.artifact,
+    source: {
+      filePath: absolutePath(input.sourceFile),
+      contentKind: input.contentKind,
+      preserveFrontmatter: input.preserveFrontmatter,
+    },
+    target: input.target,
+    adapter: input.adapterSource
+      ? { kind: "applied", sourceFile: absolutePath(input.adapterSource) }
+      : { kind: "none" },
+  };
+}
+
+export function writeArtifactId(write: PlanFileWrite): string {
+  return write.artifact.id;
+}
+
+export function writeArtifactKind(write: PlanFileWrite): Artifact["kind"] {
+  return write.artifact.kind;
+}
+
+export function writeLibraryRoot(write: PlanFileWrite): AbsolutePath {
+  return write.artifact.libraryRoot;
+}
+
+export function writeSourceFile(write: PlanFileWrite): AbsolutePath {
+  return write.source.filePath;
+}
+
+export function writeTargetFile(write: PlanFileWrite): AbsolutePath {
+  return write.target.filePath;
+}
+
+export function writeTargetRelative(write: PlanFileWrite): RelativePath {
+  return write.target.relativePath;
+}
+
+export function writeAdapterSource(write: PlanFileWrite): AbsolutePath | null {
+  return write.adapter.kind === "applied" ? write.adapter.sourceFile : null;
 }
