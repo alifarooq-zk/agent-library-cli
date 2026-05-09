@@ -18,6 +18,7 @@ function run(args: string[]): { stdout: string; stderr: string; code: number } {
 
 function cleanTargets() {
   rmSync(join(PROJECT, ".claude"), { recursive: true, force: true });
+  rmSync(join(PROJECT, ".agent-library.lock"), { force: true });
 }
 
 describe("sync generated skill", () => {

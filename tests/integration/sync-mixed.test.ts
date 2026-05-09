@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { resolve, join } from "node:path";
-import { rmSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const HOME = resolve("tests/fixtures/home-min");
-const PROJECT = resolve("tests/fixtures/projects/p2-mixed");
+const FIXTURE = resolve("tests/fixtures/projects/p2-mixed");
+
+// Mutable — assigned fresh in beforeEach so parallel file-level runs don't share state.
+let PROJECT: string;
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
   const result = Bun.spawnSync(["./bin/agent-library", ...args], {
@@ -16,16 +20,14 @@ function run(args: string[]): { stdout: string; stderr: string; code: number } {
   };
 }
 
-function cleanTargets() {
-  for (const dir of [".agents", ".claude"]) {
-    rmSync(join(PROJECT, dir), { recursive: true, force: true });
-  }
-  rmSync(join(PROJECT, ".agent-library.lock"), { force: true });
-}
-
 describe("sync generated mixed (commands, agents, dual targets)", () => {
-  beforeEach(cleanTargets);
-  afterEach(cleanTargets);
+  beforeEach(() => {
+    PROJECT = mkdtempSync(join(tmpdir(), "al-test-mixed-"));
+    cpSync(FIXTURE, PROJECT, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(PROJECT, { recursive: true, force: true });
+  });
 
   it("writes all 6 target files with generated headers", async () => {
     const r = run(["sync", PROJECT]);

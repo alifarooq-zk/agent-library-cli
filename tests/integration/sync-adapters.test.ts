@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { resolve, join } from "node:path";
 import { rmSync } from "node:fs";
+import { readLockfile } from "../../src/lockfile/read.ts";
 
 const HOME = resolve("tests/fixtures/home-min");
 const PROJECT = resolve("tests/fixtures/projects/p4-adapters");
@@ -70,5 +71,33 @@ describe("sync generated with adapters", () => {
       join(PROJECT, ".agents", "agents", "security-reviewer.md"),
     ).text();
     expect(content).not.toContain("Claude variant");
+  });
+
+  it("records applied and absent adapters as lockfile discriminants", async () => {
+    const r = run(["sync", PROJECT]);
+    expect(r.code).toBe(0);
+
+    const result = await readLockfile(join(PROJECT, ".agent-library.lock"));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value === null) return;
+
+    const targets = result.value.artifacts.flatMap((artifact) =>
+      artifact.files.flatMap((file) =>
+        file.targets.map((target) => [target.path, target.adapter] as const),
+      ),
+    );
+
+    expect(targets).toContainEqual([
+      ".claude/agents/security-reviewer.md",
+      {
+        kind: "applied",
+        source: "global/agents/security-reviewer.adapters/claude.md",
+        hash: expect.any(String),
+      },
+    ]);
+    expect(targets).toContainEqual([
+      ".agents/agents/security-reviewer.md",
+      { kind: "none" },
+    ]);
   });
 });

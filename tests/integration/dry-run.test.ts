@@ -39,9 +39,15 @@ describe("sync --dry-run", () => {
     const dryRunLines = r.stdout
       .split("\n")
       .filter((line) => line.startsWith("[dry-run] would write "));
-    expect(dryRunLines).toHaveLength(6);
+    expect(dryRunLines).toHaveLength(8); // 3 artifacts × 2 targets + 2 bundled template.md
     expect(dryRunLines).toContain(
       "[dry-run] would write .agents/skills/writing-plans/SKILL.md",
+    );
+    expect(dryRunLines).toContain(
+      "[dry-run] would write .agents/skills/writing-plans/template.md",
+    );
+    expect(dryRunLines).toContain(
+      "[dry-run] would write .claude/skills/writing-plans/template.md",
     );
     expect(dryRunLines).toContain(
       "[dry-run] would write .claude/agents/security-reviewer.md",

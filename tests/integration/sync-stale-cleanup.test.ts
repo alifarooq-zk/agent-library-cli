@@ -117,7 +117,8 @@ describe("sync stale file cleanup", () => {
 
     const r2 = run(["sync", TEMP_PROJECT]);
     expect(r2.code).toBe(0);
-    expect(r2.stdout).toContain("Removed stale generated files: 2");
+    // writing-plans has 2 source files (SKILL.md + template.md) × 2 targets = 4 stale
+    expect(r2.stdout).toContain("Removed stale generated files: 4");
 
     expect(
       existsSync(
@@ -127,6 +128,16 @@ describe("sync stale file cleanup", () => {
     expect(
       existsSync(
         join(TEMP_PROJECT, ".claude", "skills", "writing-plans", "SKILL.md"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(TEMP_PROJECT, ".agents", "skills", "writing-plans", "template.md"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(TEMP_PROJECT, ".claude", "skills", "writing-plans", "template.md"),
       ),
     ).toBe(false);
   });

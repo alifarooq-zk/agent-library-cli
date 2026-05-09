@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { resolve, join } from "node:path";
-import { rmSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { readLockfile } from "../../src/lockfile/read.ts";
 import { hashFile } from "../../src/lockfile/hash.ts";
 import { LockfileSchema, type Lockfile } from "../../src/lockfile/schema.ts";
 
 const HOME = resolve("tests/fixtures/home-min");
-const PROJECT = resolve("tests/fixtures/projects/p2-mixed");
+const FIXTURE = resolve("tests/fixtures/projects/p2-mixed");
+
+// Mutable — assigned fresh in beforeEach so parallel file-level runs don't share state.
+let PROJECT: string;
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
   const result = Bun.spawnSync(["./bin/agent-library", ...args], {
@@ -19,13 +23,6 @@ function run(args: string[]): { stdout: string; stderr: string; code: number } {
   };
 }
 
-function cleanTargets() {
-  for (const dir of [".agents", ".claude"]) {
-    rmSync(join(PROJECT, dir), { recursive: true, force: true });
-  }
-  rmSync(join(PROJECT, ".agent-library.lock"), { force: true });
-}
-
 async function readProjectLockfile(): Promise<Lockfile> {
   const result = await readLockfile(join(PROJECT, ".agent-library.lock"));
   expect(result.ok).toBe(true);
@@ -36,8 +33,13 @@ async function readProjectLockfile(): Promise<Lockfile> {
 }
 
 describe("sync lockfile", () => {
-  beforeEach(cleanTargets);
-  afterEach(cleanTargets);
+  beforeEach(() => {
+    PROJECT = mkdtempSync(join(tmpdir(), "al-test-lockfile-"));
+    cpSync(FIXTURE, PROJECT, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(PROJECT, { recursive: true, force: true });
+  });
 
   it("writes a valid lockfile after sync", async () => {
     const r = run(["sync", PROJECT]);
@@ -54,6 +56,7 @@ describe("sync lockfile", () => {
     run(["sync", PROJECT]);
 
     const lockfile = await readProjectLockfile();
+    expect(lockfile.version).toBe(2);
     expect(lockfile.cliVersion).toBe("0.1.0");
     expect(lockfile.artifacts.length).toBe(3);
   });
@@ -90,5 +93,18 @@ describe("sync lockfile", () => {
 
     const lockfile = await readProjectLockfile();
     expect(new Date(lockfile.syncedAt).toISOString()).toBe(lockfile.syncedAt);
+  });
+
+  it("lockfile uses discriminated adapter entries", async () => {
+    run(["sync", PROJECT]);
+
+    const lockfile = await readProjectLockfile();
+    for (const artifact of lockfile.artifacts) {
+      for (const file of artifact.files) {
+        for (const target of file.targets) {
+          expect(["none", "applied"]).toContain(target.adapter.kind);
+        }
+      }
+    }
   });
 });
