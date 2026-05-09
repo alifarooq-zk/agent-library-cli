@@ -9,7 +9,7 @@ The current model assumes a locally managed canonical library path (`~/.agent-li
 
 ## Goals
 
-1. Make a GitHub repository the default canonical source for library assets.
+1. Make a GitHub repository the canonical source for library assets.
 2. Keep sync reproducible by pinning installs to an exact git commit in lockfile.
 3. Add explicit update behavior so users can re-sync to the latest remote state when they choose.
 4. Preserve existing include semantics and domain-first source layout.
@@ -17,18 +17,19 @@ The current model assumes a locally managed canonical library path (`~/.agent-li
 ## Non-Goals
 
 1. No implicit auto-update on every sync.
-2. No silent fallback to local sources when GitHub is configured.
-3. No change to generated vs vendored ownership model semantics.
+2. No silent fallback to local sources.
+3. No backward compatibility with previous lockfile schema versions. The tool is pre-release; lockfile schema resets to v1.
 
 ## Recommended Approach
 
-Use a persistent bare-repo cache (recommended) under user cache, then materialize by pinned ref:
+Use a persistent bare-repo cache under user cache, then materialize by pinned SHA:
 
-- Cache path example: `~/.cache/agent-library/repos/<repo-hash>.git`
-- `sync` uses the commit pinned in `.agent-library.lock` by default.
-- `sync --update` fetches remote and updates lockfile to a newer selected commit, then syncs.
-
-This provides fast subsequent syncs, reproducibility, and optional offline behavior after the first fetch.
+- Bare repo cache path: `~/.cache/agent-library/repos/<sha256-of-clone-url>.git` (hash of the full HTTPS clone URL, e.g. `https://github.com/org/repo.git`)
+- Extracted tree path: `~/.cache/agent-library/trees/<sha>/` (SHA-keyed; multiple projects pinned to the same commit share one extracted tree)
+- `sync` uses the commit SHA pinned in `.agent-library.lock`.
+- `sync --update` fetches remote, resolves new SHA, updates lockfile, then syncs.
+- If the bare repo cache is missing the pinned SHA (e.g. new machine, cleared cache), `sync` fails with a clear error: "locked SHA `<sha>` not in local cache, run `sync --update` to fetch." No silent fallback fetch.
+- `agent-library cache prune` scans all known project lockfiles, collects SHAs still in use, and deletes extracted trees not referenced by any lockfile.
 
 ## Alternatives Considered
 
@@ -38,7 +39,7 @@ Simple to implement but slower and wasteful for repeated use.
 
 ### B) Persistent bare repo cache (**chosen**)
 
-Best balance of speed, determinism, and robust UX for repeated syncs.
+Best balance of speed, determinism, and explicit offline behavior. Once locked, sync is fully local until the user opts into an update.
 
 ### C) GitHub archive download per ref
 
@@ -46,7 +47,7 @@ No git operations required but weaker branch/ref workflows and less ergonomic fo
 
 ## Manifest Model
 
-Add a source block:
+`source` is required. GitHub is the only supported source type.
 
 ```yaml
 version: 1
@@ -55,7 +56,7 @@ target: both
 source:
   type: github
   repo: org/agent-library
-  ref: main # optional default ref
+  ref: main # optional default tracking ref
 include:
   - global
   - profile:universal
@@ -63,43 +64,83 @@ include:
 
 Notes:
 
-- `source.type=github` means source resolution is remote-first.
-- `source.ref` sets default tracking ref when lockfile is absent.
-- Existing include entries remain unchanged.
+- `source.type=github` is the only valid value.
+- `source.ref` is required. There is no default branch fallback.
+- Include entries are unchanged from the existing model.
 
 ## Lockfile Model
 
-Extend `.agent-library.lock` with source metadata:
+Lockfile schema resets to v1. The `source` block is required.
 
-- repo URL or `org/name`
-- resolved commit SHA
-- tracked ref (if any)
-- source content hash metadata already used for ownership checks
-- last fetch/update metadata
+```ts
+{
+  version: 1,
+  cliVersion: string,
+  mode: "generated" | "vendored",
+  target: "codex" | "claude" | "both",
+  syncedAt: string,       // ISO 8601
+  source: {
+    repo: string,         // "org/name"
+    sha: string,          // pinned commit SHA
+    ref: string,          // tracked ref e.g. "main"
+    fetchedAt: string,    // ISO 8601, last time bare-repo was fetched
+  },
+  include: string[],
+  artifacts: Artifact[]   // unchanged: id, kind, files[{ source, sourceHash, targets[{ path, targetHash, adapter }] }]
+}
+```
 
 Behavior:
 
-- Plain `sync` uses lockfile SHA if present.
+- Plain `sync` uses lockfile `sha`. Fails with typed error if SHA is not in local bare-repo cache.
 - `sync --update` fetches remote, resolves new SHA, updates lockfile, then syncs.
 
 ## Command Behavior
 
 ### `agent-library sync <project-root>`
 
-1. Read manifest and lockfile.
-2. Resolve source commit:
-   - lockfile SHA if present
-   - otherwise manifest ref/default branch HEAD
-3. Materialize source tree from cache.
-4. Run existing resolve -> plan -> collision -> write pipeline.
-5. Persist lockfile state.
+Pipeline: `loadManifest -> resolveSource -> validate -> resolveIncludes -> expandBundles -> planArtifacts -> detectCollisions -> write -> updateLockfile`
+
+`resolveSource` is a new phase that runs before `resolveIncludes` and produces a `homeRoot: string` (the extracted tree path). `resolveIncludes` and all downstream phases are unchanged — they remain path-agnostic.
+
+`resolveSource` steps:
+1. Derive clone URL from `source.repo` (`org/name` → `https://github.com/<org>/<repo>.git`).
+2. If lockfile present: use pinned SHA. Fail with typed error if SHA not in bare-repo cache.
+3. If no lockfile: fetch bare-repo cache and resolve SHA from `source.ref`.
+4. Materialize extracted tree via `git archive <sha> | tar -x -C ~/.cache/agent-library/trees/<sha>/`. Skip if directory already exists.
+5. Return extracted tree path as `homeRoot`.
+6. Register project root in `~/.cache/agent-library/projects.json`.
+7. Write lockfile v1 with source metadata.
 
 ### `agent-library sync --update <project-root>`
 
-1. Fetch latest from remote for configured repo/ref.
+1. Fetch latest from remote for configured `source.repo` and `source.ref`.
 2. Resolve new commit SHA.
-3. Update lockfile SHA to new value.
-4. Run normal sync pipeline.
+3. Materialize extracted tree via `git archive <new-sha> | tar -x -C ~/.cache/agent-library/trees/<new-sha>/` if not already present.
+4. Update lockfile SHA to new value.
+5. Run normal sync pipeline.
+
+### `agent-library cache prune`
+
+1. Read project registry at `~/.cache/agent-library/projects.json` (populated by every `sync` run).
+2. Collect all SHAs referenced by lockfiles in registered projects (skip projects whose lockfile no longer exists).
+3. Delete extracted trees under `~/.cache/agent-library/trees/` not referenced by any active lockfile.
+
+Every `sync` run writes the project entry to `projects.json` — updating in-place if it exists, appending if not.
+
+```json
+{
+  "projects": [
+    {
+      "path": "/home/user/work/project-a",
+      "repo": "org/agent-library",
+      "ref": "main",
+      "sha": "abc123def456...",
+      "lastSyncedAt": "2026-05-09T12:00:00Z"
+    }
+  ]
+}
+```
 
 ## Error Handling (ResultKit-Aligned)
 
@@ -110,36 +151,35 @@ Introduce typed errors for:
 - ref not found
 - fetch timeout/network failure
 - cache corruption/materialization failure
-- lockfile/source mismatch
+- locked SHA not in local cache
 
 Rules:
 
 - No broad catch-and-ignore.
-- No silent fallback to local path when `source.type=github`.
+- No silent fallback.
 - Messages must be actionable (what failed + how to fix).
 
 ## Testing Strategy
 
 1. Unit tests
-   - manifest source validation
+   - manifest source validation (source block required, type must be `github`)
    - source resolver behavior with/without lockfile
+   - lockfile v1 schema validation
    - lockfile update transitions
    - typed error mapping
 2. Integration tests
-   - first-time sync from GitHub source
-   - re-sync pinned SHA without update
+   - first-time sync from GitHub source (no lockfile)
+   - re-sync pinned SHA without update (local only)
+   - cache miss on plain sync returns correct error
    - update flow bumps SHA and writes new content
    - unreachable remote/auth failure
-   - include resolution parity with local model
+   - `cache prune` removes only unreferenced trees
 
-## Migration / Backward Compatibility
+## Authentication
 
-1. Existing manifests without `source` continue to use local path behavior.
-2. GitHub source is additive, not a breaking replacement for existing users.
-3. Teams can migrate project-by-project by adding `source` and running `sync --update`.
+Public repos require no authentication. Private repos require `GITHUB_TOKEN` to be set in the environment. If `GITHUB_TOKEN` is unset and the repo is private, `sync` fails with a clear error: "repo not accessible — set GITHUB_TOKEN for private repos." No git credential helper fallback in v1.
 
-## Open Questions
+## Out of Scope for v1
 
-1. Authentication precedence (`GITHUB_TOKEN` vs git credential helper) for private repos.
-2. Whether to support optional signed-tag-only update policy later.
-3. Whether `sync --update` should support `--to-ref <tag|sha>` in v1 of this feature.
+- `sync --update --to-ref <tag|sha>`: pin to a specific ref at update time. Users can set `source.ref` in the manifest instead.
+- Signed-tag-only update policy.
