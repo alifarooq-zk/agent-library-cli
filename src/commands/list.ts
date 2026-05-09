@@ -26,11 +26,19 @@ listCommand
   .action((opts: { home?: string }) => {
     const homeRoot = resolveHomeRoot(opts.home);
     const profilesDir = join(homeRoot, "profiles");
-    if (!existsSync(profilesDir)) return;
-    for (const entry of readdirSync(profilesDir).sort()) {
-      if (!statSync(join(profilesDir, entry)).isFile()) continue;
-      if (!entry.endsWith(".yml")) continue;
-      process.stdout.write(`${entry.slice(0, -4)}\n`); // strip .yml
+    if (!existsSync(profilesDir)) {
+      process.stderr.write(`no profiles directory found at ${profilesDir}\n`);
+      return;
+    }
+    const profiles = readdirSync(profilesDir)
+      .sort()
+      .filter((entry) => statSync(join(profilesDir, entry)).isFile() && entry.endsWith(".yml"));
+    if (profiles.length === 0) {
+      process.stderr.write(`no profiles found in ${profilesDir}\n`);
+      return;
+    }
+    for (const entry of profiles) {
+      process.stdout.write(`${entry.slice(0, -4)}\n`);
     }
   });
 
