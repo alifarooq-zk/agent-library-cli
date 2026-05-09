@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve } from "node:path";
 import { expandBundle, type BundleResolveError } from "./bundles.ts";
-import type { Artifact } from "../artifact/types.ts";
+import { withArtifactId, type Artifact } from "../artifact/types.ts";
+import type { LocalIncludeRef } from "../manifest/include.ts";
 import { ResultKit, type Result } from "../util/result-kit/index.ts";
 
 /**
@@ -10,7 +11,7 @@ import { ResultKit, type Result } from "../util/result-kit/index.ts";
  */
 export function resolveLocalIncludeEntry(
   projectRoot: string,
-  entry: `./${string}`,
+  entry: LocalIncludeRef,
 ): Result<Artifact[], BundleResolveError> {
   const localRoot = resolve(projectRoot, ".agent-library");
   const localEntry = entry.slice("./".length);
@@ -33,9 +34,6 @@ export function resolveLocalIncludeEntry(
   if (!result.ok) return result;
 
   return ResultKit.success(
-    result.value.map((artifact) => ({
-      ...artifact,
-      id: `./${artifact.id}`,
-    })),
+    result.value.map((artifact) => withArtifactId(artifact, `./${artifact.id}`)),
   );
 }
