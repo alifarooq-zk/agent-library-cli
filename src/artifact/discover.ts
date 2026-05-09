@@ -122,6 +122,7 @@ export function discoverDomains(libraryRoot: string): string[] {
   if (!existsSync(libraryRoot)) return [];
   return readdirSync(libraryRoot)
     .filter((entry) => {
+      if (entry.startsWith(".")) return false;
       if (entry === "profiles") return false;
       return statSync(join(libraryRoot, entry)).isDirectory();
     })
