@@ -1,6 +1,12 @@
 import { describe, it, expect } from "bun:test";
-import { validateManifest } from "../../src/manifest/validate.ts";
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import {
+  validateManifest,
+  validateSkillSpecs,
+} from "../../src/manifest/validate.ts";
 import { loadManifest } from "../../src/manifest/load.ts";
+import type { Artifact } from "../../src/artifact/types.ts";
 
 describe("validateManifest", () => {
   it("accepts a fully populated valid manifest", async () => {
@@ -62,3 +68,44 @@ describe("validateManifest", () => {
     expect(result.error.type).toBe("yaml_read_error");
   });
 });
+
+describe("validateSkillSpecs", () => {
+  it("rejects skills without YAML frontmatter", async () => {
+    const root = join("/tmp", "agent-library-no-frontmatter-skill");
+    rmSync(root, { recursive: true, force: true });
+    mkdirSync(root, { recursive: true });
+    await Bun.write(join(root, "SKILL.md"), "# Missing frontmatter\n");
+
+    try {
+      const issues = await validateSkillSpecs([makeSkillArtifact(root)]);
+      expect(issues[0].message).toMatch(/missing YAML frontmatter/i);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("requires the Agent Skills description field", async () => {
+    const root = join("/tmp", "agent-library-missing-description-skill");
+    rmSync(root, { recursive: true, force: true });
+    mkdirSync(root, { recursive: true });
+    await Bun.write(join(root, "SKILL.md"), "---\nname: example\n---\n");
+
+    try {
+      const issues = await validateSkillSpecs([makeSkillArtifact(root)]);
+      expect(issues[0].message).toMatch(/description/i);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+function makeSkillArtifact(sourceRoot: string): Artifact {
+  return {
+    id: "test/skills/example",
+    kind: "skill",
+    sourceRoot,
+    domain: "test",
+    basename: "example",
+    libraryRoot: "/tmp",
+  };
+}

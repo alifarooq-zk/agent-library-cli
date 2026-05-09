@@ -80,6 +80,7 @@ describe("sync vendored", () => {
     const target = targetPath();
     expect(await Bun.file(target).exists()).toBe(true);
     const firstContent = await Bun.file(target).text();
+    expect(firstContent.startsWith("---\n")).toBe(true);
     expect(firstContent).toContain("Vendored from agent-library.");
     expect(firstContent).toContain("Source: frontend/skills/react-useeffect");
     expect(firstContent).toContain("Mode: vendored");

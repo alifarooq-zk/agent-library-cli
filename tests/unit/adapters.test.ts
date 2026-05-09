@@ -54,6 +54,18 @@ describe("mergeWithAdapter", () => {
     });
     expect(out).toBe("<!-- HDR -->\n# Body\n");
   });
+
+  it("inserts the header after YAML frontmatter when requested", () => {
+    const out = mergeWithAdapter({
+      header: "<!-- HDR -->",
+      neutral: "---\nname: example\ndescription: Example skill.\n---\n\n# Body\n",
+      adapter: null,
+      preserveFrontmatter: true,
+    });
+    expect(out).toBe(
+      "---\nname: example\ndescription: Example skill.\n---\n<!-- HDR -->\n\n# Body\n",
+    );
+  });
 });
 
 describe("findAdapter", () => {

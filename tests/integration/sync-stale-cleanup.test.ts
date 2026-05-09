@@ -106,6 +106,31 @@ describe("sync stale file cleanup", () => {
     ).toBe(true);
   });
 
+  it("removes stale generated skills whose marker follows frontmatter", async () => {
+    const r1 = run(["sync", TEMP_PROJECT]);
+    expect(r1.code).toBe(0);
+
+    setManifestIncludes([
+      "global/commands/review-pr",
+      "global/agents/security-reviewer",
+    ]);
+
+    const r2 = run(["sync", TEMP_PROJECT]);
+    expect(r2.code).toBe(0);
+    expect(r2.stdout).toContain("Removed stale generated files: 2");
+
+    expect(
+      existsSync(
+        join(TEMP_PROJECT, ".agents", "skills", "writing-plans", "SKILL.md"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(TEMP_PROJECT, ".claude", "skills", "writing-plans", "SKILL.md"),
+      ),
+    ).toBe(false);
+  });
+
   it("does not remove unmarked files that lack the generated marker", async () => {
     // Sync with only writing-plans
     setManifestIncludes(["global/skills/writing-plans"]);
