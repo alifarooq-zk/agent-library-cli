@@ -1,7 +1,16 @@
 import { z } from "zod";
 
+export const LockfileAdapterSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }),
+  z.object({
+    kind: z.literal("applied"),
+    source: z.string(),
+    hash: z.string(),
+  }),
+]);
+
 export const LockfileSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   cliVersion: z.string(),
   mode: z.enum(["generated", "vendored"]),
   target: z.enum(["codex", "claude", "both"]),
@@ -19,8 +28,7 @@ export const LockfileSchema = z.object({
             z.object({
               path: z.string(), // path relative to projectRoot
               targetHash: z.string(),
-              adapterSource: z.string().nullable(),
-              adapterHash: z.string().nullable(),
+              adapter: LockfileAdapterSchema,
             }),
           ),
         }),

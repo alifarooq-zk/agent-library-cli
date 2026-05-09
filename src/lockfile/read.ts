@@ -46,6 +46,19 @@ export async function readLockfile(
   const rawResult = parseYaml(textResult.value);
   if (!rawResult.ok) return rawResult;
 
+  if (
+    rawResult.value &&
+    typeof rawResult.value === "object" &&
+    "version" in rawResult.value &&
+    rawResult.value.version === 1
+  ) {
+    return ResultKit.failure({
+      type: "lockfile_schema_error" as const,
+      message:
+        "lockfile version 1 is no longer supported; delete .agent-library.lock and run sync to regenerate",
+    });
+  }
+
   const result = LockfileSchema.safeParse(rawResult.value);
   if (!result.success) {
     return ResultKit.failure({
