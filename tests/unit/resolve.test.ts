@@ -7,12 +7,12 @@ const HOME = resolve("tests/fixtures/home-min");
 describe("resolveIncludes", () => {
   it("resolves a concrete skill path", async () => {
     const result = await resolveIncludes(["frontend/skills/react-useeffect"], {
+      kind: "home",
       homeRoot: HOME,
-      projectRoot: null,
     });
     if (!result.ok)
       throw new Error(`Expected success: ${result.error.message}`);
-    expect(result.value.map((a) => a.id)).toEqual([
+    expect(result.value.map((a) => String(a.id))).toEqual([
       "frontend/skills/react-useeffect",
     ]);
     expect(result.value[0].kind).toBe("skill");
@@ -20,12 +20,12 @@ describe("resolveIncludes", () => {
 
   it("expands a bundle directory into its artifacts", async () => {
     const result = await resolveIncludes(["global"], {
+      kind: "home",
       homeRoot: HOME,
-      projectRoot: null,
     });
     if (!result.ok)
       throw new Error(`Expected success: ${result.error.message}`);
-    const ids = result.value.map((a) => a.id).sort();
+    const ids = result.value.map((a) => String(a.id)).sort();
     expect(ids).toEqual([
       "global/agents/security-reviewer",
       "global/commands/review-pr",
@@ -35,12 +35,12 @@ describe("resolveIncludes", () => {
 
   it("expands a profile reference", async () => {
     const result = await resolveIncludes(["profile:frontend"], {
+      kind: "home",
       homeRoot: HOME,
-      projectRoot: null,
     });
     if (!result.ok)
       throw new Error(`Expected success: ${result.error.message}`);
-    const ids = result.value.map((a) => a.id);
+    const ids = result.value.map((a) => String(a.id));
     expect(ids).toContain("frontend/skills/react-useeffect");
     expect(ids).toContain("frontend/skills/shadcn");
     expect(ids).toContain("global/skills/writing-plans");
@@ -48,8 +48,8 @@ describe("resolveIncludes", () => {
 
   it("returns profile_nested failure for a profile that includes another profile", async () => {
     const result = await resolveIncludes(["profile:nested"], {
+      kind: "home",
       homeRoot: HOME,
-      projectRoot: null,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -59,8 +59,8 @@ describe("resolveIncludes", () => {
 
   it("returns bundle_not_found failure for an unresolvable include", async () => {
     const result = await resolveIncludes(["frontend/skills/does-not-exist"], {
+      kind: "home",
       homeRoot: HOME,
-      projectRoot: null,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -70,8 +70,8 @@ describe("resolveIncludes", () => {
 
   it("requires project context for project-local includes", async () => {
     const result = await resolveIncludes(["./product/skills/domain-review"], {
+      kind: "home",
       homeRoot: HOME,
-      projectRoot: null,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -81,6 +81,7 @@ describe("resolveIncludes", () => {
 
   it("rejects project-local includes that escape the project .agent-library root", async () => {
     const result = await resolveIncludes(["./../home-min/global"], {
+      kind: "project",
       homeRoot: HOME,
       projectRoot: resolve("tests/fixtures/projects/p6-local"),
     });

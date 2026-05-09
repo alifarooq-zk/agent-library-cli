@@ -6,7 +6,7 @@ import {
   validateSkillSpecs,
 } from "../../src/manifest/validate.ts";
 import { loadManifest } from "../../src/manifest/load.ts";
-import type { Artifact } from "../../src/artifact/types.ts";
+import { createSkillArtifact, type Artifact } from "../../src/artifact/types.ts";
 
 describe("validateManifest", () => {
   it("accepts a fully populated valid manifest", async () => {
@@ -100,12 +100,12 @@ describe("validateSkillSpecs", () => {
 });
 
 function makeSkillArtifact(sourceRoot: string): Artifact {
-  return {
+  return createSkillArtifact({
     id: "test/skills/example",
-    kind: "skill",
-    sourceRoot,
     domain: "test",
     basename: "example",
     libraryRoot: "/tmp",
-  };
+    rootDir: sourceRoot,
+    primarySourceFile: join(sourceRoot, "SKILL.md"),
+  });
 }

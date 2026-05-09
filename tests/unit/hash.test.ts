@@ -17,7 +17,7 @@ describe("hashBytes", () => {
 
   it("produces correct known sha256", () => {
     // echo -n 'hello' | sha256sum => 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
-    expect(hashBytes(Buffer.from("hello"))).toBe(
+    expect(String(hashBytes(Buffer.from("hello")))).toBe(
       "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
     );
   });

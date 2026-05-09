@@ -1,30 +1,34 @@
 import { describe, it, expect } from "bun:test";
 import { resolve } from "node:path";
 import { mergeWithAdapter, findAdapter } from "../../src/sync/adapters.ts";
-import type { Artifact } from "../../src/artifact/types.ts";
+import {
+  createAgentArtifact,
+  createSkillArtifact,
+  type Artifact,
+} from "../../src/artifact/types.ts";
 
 const HOME = resolve("tests/fixtures/home-min");
 
 function makeSkillArtifact(): Artifact {
-  return {
+  const rootDir = resolve(HOME, "frontend/skills/react-useeffect");
+  return createSkillArtifact({
     id: "frontend/skills/react-useeffect",
-    kind: "skill",
-    sourceRoot: resolve(HOME, "frontend/skills/react-useeffect"),
     domain: "frontend",
     basename: "react-useeffect",
     libraryRoot: HOME,
-  };
+    rootDir,
+    primarySourceFile: resolve(rootDir, "SKILL.md"),
+  });
 }
 
 function makeAgentArtifact(): Artifact {
-  return {
+  return createAgentArtifact({
     id: "global/agents/security-reviewer",
-    kind: "agent",
-    sourceRoot: resolve(HOME, "global/agents/security-reviewer.md"),
     domain: "global",
     basename: "security-reviewer",
     libraryRoot: HOME,
-  };
+    sourceFile: resolve(HOME, "global/agents/security-reviewer.md"),
+  });
 }
 
 describe("mergeWithAdapter", () => {

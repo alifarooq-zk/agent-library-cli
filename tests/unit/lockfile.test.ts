@@ -6,7 +6,7 @@ import type { Lockfile } from "../../src/lockfile/schema.ts";
 const TEMP_PATH = "/tmp/al-test.lock";
 
 const minimalLockfile: Lockfile = {
-  version: 1,
+  version: 2,
   cliVersion: "0.1.0",
   mode: "generated",
   target: "claude",
@@ -24,8 +24,7 @@ const minimalLockfile: Lockfile = {
             {
               path: ".claude/skills/writing-plans/SKILL.md",
               targetHash: "def456",
-              adapterSource: null,
-              adapterHash: null,
+              adapter: { kind: "none" },
             },
           ],
         },
@@ -58,5 +57,40 @@ describe("lockfile round-trip", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.type).toBe("lockfile_schema_error");
+  });
+
+  it("rejects legacy v1 adapter fields", async () => {
+    await Bun.write(
+      TEMP_PATH,
+      [
+        "version: 1",
+        "cliVersion: 0.1.0",
+        "mode: generated",
+        "target: claude",
+        "syncedAt: 2026-05-08T00:00:00.000Z",
+        "include:",
+        "  - global/skills/writing-plans",
+        "artifacts:",
+        "  - id: global/skills/writing-plans",
+        "    kind: skill",
+        "    files:",
+        "      - source: global/skills/writing-plans/SKILL.md",
+        "        sourceHash: abc123",
+        "        targets:",
+        "          - path: .claude/skills/writing-plans/SKILL.md",
+        "            targetHash: def456",
+        "            adapterSource: null",
+        "            adapterHash: null",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await readLockfile(TEMP_PATH);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.type).toBe("lockfile_schema_error");
+    expect(result.error.message).toBe(
+      "lockfile version 1 is no longer supported; delete .agent-library.lock and run sync to regenerate",
+    );
   });
 });
