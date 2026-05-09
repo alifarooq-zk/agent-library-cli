@@ -1,5 +1,8 @@
+.claude/
+.agents/
+.agent-library.lock
+.DS_Store
+.vscode/
+.idea/
+
 node_modules/
-bin/agent-library
-tests/fixtures/**/.agents/
-tests/fixtures/**/.claude/
-tests/fixtures/**/.agent-library.lock
