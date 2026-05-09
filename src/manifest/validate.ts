@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { parseDocument } from "yaml";
 import { ManifestSchema } from "./schema.ts";
 import type { Artifact } from "../artifact/types.ts";
 import type { ResolveCtx } from "../resolve/sources.ts";
@@ -47,11 +47,11 @@ export async function validateResolve(
 }
 
 /**
- * Validate SKILL.md frontmatter: the `name:` field must match the folder basename.
+ * Validate SKILL.md frontmatter against the Agent Skills spec.
  * Accepts pre-resolved artifacts so the caller avoids a redundant resolve pass.
- * Returns one Issue per mismatched skill.
+ * Returns Issues for invalid skills.
  */
-export async function validateSkillNames(
+export async function validateSkillSpecs(
   artifacts: Artifact[],
 ): Promise<Issue[]> {
   const issues: Issue[] = [];
@@ -63,11 +63,51 @@ export async function validateSkillNames(
     if (!(await skillMdFile.exists())) continue;
 
     const raw = await skillMdFile.text();
-    const frontmatterName = extractFrontmatterName(raw);
-    if (frontmatterName !== null && frontmatterName !== artifact.basename) {
+    const frontmatter = extractSkillFrontmatter(raw);
+
+    if (!frontmatter.ok) {
       issues.push({
         path: artifact.id,
-        message: `SKILL.md name '${frontmatterName}' does not match folder basename '${artifact.basename}'`,
+        message: frontmatter.message,
+      });
+      continue;
+    }
+
+    const name = frontmatter.value.name;
+    if (typeof name !== "string" || name.length === 0) {
+      issues.push({
+        path: artifact.id,
+        message: "SKILL.md frontmatter must include a non-empty string name",
+      });
+    } else if (name.length > 64) {
+      issues.push({
+        path: artifact.id,
+        message: "SKILL.md name must be 64 characters or fewer",
+      });
+    } else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
+      issues.push({
+        path: artifact.id,
+        message:
+          "SKILL.md name must use lowercase letters, numbers, and single hyphens only",
+      });
+    } else if (name !== artifact.basename) {
+      issues.push({
+        path: artifact.id,
+        message: `SKILL.md name '${name}' does not match folder basename '${artifact.basename}'`,
+      });
+    }
+
+    const description = frontmatter.value.description;
+    if (typeof description !== "string" || description.length === 0) {
+      issues.push({
+        path: artifact.id,
+        message:
+          "SKILL.md frontmatter must include a non-empty string description",
+      });
+    } else if (description.length > 1024) {
+      issues.push({
+        path: artifact.id,
+        message: "SKILL.md description must be 1024 characters or fewer",
       });
     }
   }
@@ -76,17 +116,33 @@ export async function validateSkillNames(
 }
 
 /**
- * Extract the `name:` value from a YAML frontmatter block at the top of a markdown file.
- * Returns null if no frontmatter block is found or `name` is absent.
+ * Backwards-compatible name for callers/tests that only cared about name checks.
  */
-function extractFrontmatterName(content: string): string | null {
+export const validateSkillNames = validateSkillSpecs;
+
+function extractSkillFrontmatter(
+  content: string,
+): { ok: true; value: Record<string, unknown> } | { ok: false; message: string } {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!match) return null;
-  try {
-    const fm = parseYaml(match[1]) as Record<string, unknown>;
-    if (typeof fm?.name === "string") return fm.name;
-  } catch {
-    // malformed frontmatter — treat as no name
+  if (!match) {
+    return {
+      ok: false,
+      message: "SKILL.md is missing YAML frontmatter delimited by ---",
+    };
   }
-  return null;
+
+  const doc = parseDocument(match[1], { prettyErrors: false });
+  if (doc.errors.length > 0) {
+    return { ok: false, message: "SKILL.md frontmatter is invalid YAML" };
+  }
+
+  const value = doc.toJS() as unknown;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return {
+      ok: false,
+      message: "SKILL.md frontmatter must be a YAML mapping",
+    };
+  }
+
+  return { ok: true, value: value as Record<string, unknown> };
 }

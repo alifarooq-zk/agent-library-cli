@@ -110,7 +110,12 @@ export async function buildContent(
     const adapter = w.adapterSource
       ? await Bun.file(w.adapterSource).text()
       : null;
-    return mergeWithAdapter({ header, neutral, adapter });
+    return mergeWithAdapter({
+      header,
+      neutral,
+      adapter,
+      preserveFrontmatter: w.artifactKind === "skill",
+    });
   }
   return Bun.file(w.sourceFile).bytes();
 }

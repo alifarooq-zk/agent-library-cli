@@ -7,19 +7,43 @@ export interface MergeWithAdapterOptions {
   header: string;
   neutral: string;
   adapter: string | null;
+  preserveFrontmatter?: boolean;
 }
 
 /**
- * Merge header, neutral source body, and optional adapter content in stable order:
- * header + newline + neutral + adapter (if present).
+ * Merge header, neutral source body, and optional adapter content.
+ * Default order: header + newline + neutral + adapter (if present).
+ * When preserveFrontmatter is true and neutral begins with YAML frontmatter,
+ * the order is: frontmatter + header + newline + body + adapter (if present).
  */
 export function mergeWithAdapter(opts: MergeWithAdapterOptions): string {
-  const { header, neutral, adapter } = opts;
+  const { header, neutral, adapter, preserveFrontmatter = false } = opts;
   const normalizedNeutral = neutral.endsWith("\n") ? neutral : neutral + "\n";
+  const content = preserveFrontmatter
+    ? insertHeaderAfterFrontmatter(normalizedNeutral, header)
+    : `${header}\n${normalizedNeutral}`;
+
   if (adapter === null) {
-    return `${header}\n${normalizedNeutral}`;
+    return content;
   }
-  return `${header}\n${normalizedNeutral}${adapter}`;
+  return `${content}${adapter}`;
+}
+
+function insertHeaderAfterFrontmatter(content: string, header: string): string {
+  const frontmatterEnd = findYamlFrontmatterEnd(content);
+  if (frontmatterEnd === null) {
+    return `${header}\n${content}`;
+  }
+
+  const frontmatter = content.slice(0, frontmatterEnd);
+  const separator = frontmatter.endsWith("\n") ? "" : "\n";
+  return `${frontmatter}${separator}${header}\n${content.slice(frontmatterEnd)}`;
+}
+
+export function findYamlFrontmatterEnd(content: string): number | null {
+  const match = content.match(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/);
+  if (!match) return null;
+  return match[0].length;
 }
 
 export interface AdapterResult {

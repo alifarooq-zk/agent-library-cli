@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { existsSync, readdirSync, rmdirSync } from "node:fs";
 import type { Lockfile } from "../lockfile/schema.ts";
 import { GENERATED_MARKER } from "./header.ts";
+import { findYamlFrontmatterEnd } from "./adapters.ts";
 
 export interface CleanupResult {
   removed: number;
@@ -80,13 +81,26 @@ export async function findStaleGeneratedTargets(
 }
 
 function hasGeneratedOwnershipHeader(content: string): boolean {
-  if (!content.startsWith(`<!--\n${GENERATED_MARKER}\n`)) return false;
+  const headerStart = findGeneratedOwnershipHeaderStart(content);
+  if (headerStart === null) return false;
 
-  const headerEnd = content.indexOf("\n-->");
+  const headerEnd = content.indexOf("\n-->", headerStart);
   if (headerEnd === -1) return false;
 
-  const header = content.slice(0, headerEnd);
+  const header = content.slice(headerStart, headerEnd);
   return header.includes("\nSource: ") && header.includes("\nMode: generated");
+}
+
+function findGeneratedOwnershipHeaderStart(content: string): number | null {
+  const markerPrefix = `<!--\n${GENERATED_MARKER}\n`;
+  if (content.startsWith(markerPrefix)) return 0;
+
+  const frontmatterEnd = findYamlFrontmatterEnd(content);
+  if (frontmatterEnd === null) return null;
+
+  const afterFrontmatter = content.slice(frontmatterEnd);
+  if (!afterFrontmatter.startsWith(markerPrefix)) return null;
+  return frontmatterEnd;
 }
 
 /**
