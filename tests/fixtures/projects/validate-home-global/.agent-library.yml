@@ -1,6 +1,6 @@
 version: 1
 scope: home
 mode: generated
-target: claude
+target: both
 include:
   - global
