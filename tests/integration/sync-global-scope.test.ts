@@ -15,45 +15,23 @@ function run(args: string[]): { stdout: string; stderr: string; code: number } {
   };
 }
 
-describe("validate command", () => {
-  it("exits 0 for a valid manifest", () => {
-    const r = run(["validate", "tests/fixtures/projects/validate-valid"]);
-    expect(r.code).toBe(0);
-  });
-
-  it("exits 1 and names the missing version field", () => {
-    const r = run([
-      "validate",
-      "tests/fixtures/projects/validate-missing-version",
-    ]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toMatch(/version/);
-  });
-
-  it("exits 1 for project manifests that include global directly", () => {
-    const r = run([
-      "validate",
-      "tests/fixtures/projects/validate-project-global",
-    ]);
+describe("sync global scope restriction", () => {
+  it("exits 1 before writing when a project manifest includes global directly", () => {
+    const r = run(["sync", "tests/fixtures/projects/validate-project-global"]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain(
       'error: "global" domain is reserved for the home manifest. Remove it from include or re-run `init --global`.',
     );
   });
 
-  it("exits 1 for project manifests whose profile resolves global artifacts", () => {
+  it("exits 1 before writing when a project profile resolves global artifacts", () => {
     const r = run([
-      "validate",
+      "sync",
       "tests/fixtures/projects/validate-project-global-profile",
     ]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain(
       'error: "global" domain is reserved for the home manifest. Remove it from include or re-run `init --global`.',
     );
-  });
-
-  it("allows global includes for home-scoped manifests", () => {
-    const r = run(["validate", "tests/fixtures/projects/validate-home-global"]);
-    expect(r.code).toBe(0);
   });
 });

@@ -68,6 +68,7 @@ describe("sync --dry-run", () => {
       join(TEMP_PROJECT, ".agent-library.yml"),
       [
         "version: 1",
+        "scope: home",
         "mode: generated",
         "target: both",
         "include:",

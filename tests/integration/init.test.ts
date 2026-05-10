@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
 import { parse } from "yaml";
 import { ManifestSchema } from "../../src/manifest/schema.ts";
+import { buildIncludeGroups } from "../../src/commands/init.ts";
 
 const TEMP_PROJECT = join("/tmp", "al-test-init-project");
 const HOME = "tests/fixtures/home-min";
@@ -51,10 +52,12 @@ describe("init command", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.data).toEqual({
       version: 1,
+      scope: "project",
       mode: "generated",
       target: "both",
-      include: ["profile:universal"],
+      include: ["frontend"],
     });
+    expect(manifest.scope).toBeUndefined();
 
     const second = await run(["init", TEMP_PROJECT]);
     expect(second.code).toBe(1);
@@ -113,30 +116,76 @@ describe("init command", () => {
     expect(manifest.target).toBe("codex");
   });
 
-  it("creates a manifest with an explicit include entry", async () => {
+  it("rejects an explicit global include without --global", async () => {
     const r = await run(
       ["init", TEMP_PROJECT],
+      "\n\nglobal/skills/writing-plans\n",
+    );
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain(
+      '"global" domain is reserved for the home manifest. Remove it from include or re-run `init --global`.',
+    );
+  });
+
+  it("rejects multiple explicit global include entries without --global", async () => {
+    const r = await run(
+      ["init", TEMP_PROJECT],
+      "\n\nglobal/skills/writing-plans,global/commands/review-pr\n",
+    );
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain(
+      '"global" domain is reserved for the home manifest. Remove it from include or re-run `init --global`.',
+    );
+  });
+
+  it("creates a home-scoped manifest with --global", async () => {
+    const r = await run(
+      ["init", "--global", TEMP_PROJECT],
       "\n\nglobal/skills/writing-plans\n",
     );
     expect(r.code).toBe(0);
     const manifest = parse(
       await Bun.file(join(TEMP_PROJECT, ".agent-library.yml")).text(),
     );
-    expect(manifest.include).toEqual(["global/skills/writing-plans"]);
+    expect(manifest).toEqual({
+      version: 1,
+      scope: "home",
+      mode: "generated",
+      target: "both",
+      include: ["global/skills/writing-plans"],
+    });
   });
 
-  it("creates a manifest with multiple comma-separated include entries", async () => {
-    const r = await run(
-      ["init", TEMP_PROJECT],
-      "\n\nglobal/skills/writing-plans,global/commands/review-pr\n",
-    );
+  it("keeps the home default include when --global is set", async () => {
+    const r = await run(["init", "--global", TEMP_PROJECT], "\n\n\n");
     expect(r.code).toBe(0);
     const manifest = parse(
       await Bun.file(join(TEMP_PROJECT, ".agent-library.yml")).text(),
     );
-    expect(manifest.include).toEqual([
-      "global/skills/writing-plans",
-      "global/commands/review-pr",
-    ]);
+    expect(manifest.scope).toBe("home");
+    expect(manifest.include).toEqual(["profile:universal"]);
+  });
+
+  it("filters global domain and global profiles from project include groups", async () => {
+    const groups = await buildIncludeGroups(HOME, { allowGlobal: false });
+
+    expect(groups.global).toBeUndefined();
+    expect(groups.Profiles?.map((option) => option.value) ?? []).not.toContain(
+      "profile:universal",
+    );
+    expect(groups.frontend?.some((option) => option.value === "frontend")).toBe(
+      true,
+    );
+  });
+
+  it("keeps global domain and profiles in home include groups", async () => {
+    const groups = await buildIncludeGroups(HOME, { allowGlobal: true });
+
+    expect(groups.global?.some((option) => option.value === "global")).toBe(
+      true,
+    );
+    expect(groups.Profiles?.map((option) => option.value)).toContain(
+      "profile:universal",
+    );
   });
 });

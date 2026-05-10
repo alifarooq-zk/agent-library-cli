@@ -21,6 +21,7 @@ function run(args: string[]): { stdout: string; stderr: string; code: number } {
 function setManifestIncludes(includes: string[]) {
   const manifest = {
     version: 1,
+    scope: "home",
     mode: "generated",
     target: "both",
     include: includes,
