@@ -19,11 +19,11 @@ const minimalLockfile: Lockfile = {
       files: [
         {
           source: "global/skills/writing-plans/SKILL.md",
-          sourceHash: "abc123",
+          sourceHash: "a".repeat(64),
           targets: [
             {
               path: ".claude/skills/writing-plans/SKILL.md",
-              targetHash: "def456",
+              targetHash: "b".repeat(64),
               adapter: { kind: "none" },
             },
           ],

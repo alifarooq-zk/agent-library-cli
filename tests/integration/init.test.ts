@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
 import { parse } from "yaml";
 import { ManifestSchema } from "../../src/manifest/schema.ts";
 import { buildIncludeGroups } from "../../src/commands/init.ts";
 
 const TEMP_PROJECT = join("/tmp", "al-test-init-project");
-const HOME = "tests/fixtures/home-min";
+const HOME = resolve("tests/fixtures/home-min");
 
 async function run(
   args: string[],
