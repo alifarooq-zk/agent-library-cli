@@ -1,5 +1,5 @@
 import { parseDocument } from "yaml";
-import { ManifestSchema } from "./schema.ts";
+import { ManifestSchema, type Manifest } from "./schema.ts";
 import type { Artifact } from "../artifact/types.ts";
 import type { ResolveCtx } from "../resolve/sources.ts";
 import { resolveIncludes } from "../resolve/sources.ts";
@@ -9,13 +9,46 @@ export interface Issue {
   message: string;
 }
 
+export const GLOBAL_RESERVED_MESSAGE =
+  '"global" domain is reserved for the home manifest. Remove it from include or re-run `init --global`.';
+
+export function formatIssue(issue: Issue): string {
+  return issue.path.length > 0
+    ? `${issue.path}: ${issue.message}`
+    : `error: ${issue.message}`;
+}
+
+export function includeReferencesGlobal(entry: string): boolean {
+  return entry === "global" || entry.startsWith("global/");
+}
+
 export function validateManifest(input: unknown): Issue[] {
   const r = ManifestSchema.safeParse(input);
-  if (r.success) return [];
-  return r.error.issues.map((i) => ({
-    path: i.path.join("."),
-    message: i.message,
-  }));
+  if (!r.success) {
+    return r.error.issues.map((i) => ({
+      path: i.path.join("."),
+      message: i.message,
+    }));
+  }
+
+  if (
+    r.data.scope !== "home" &&
+    r.data.include.some((entry) => includeReferencesGlobal(entry))
+  ) {
+    return [{ path: "", message: GLOBAL_RESERVED_MESSAGE }];
+  }
+
+  return [];
+}
+
+export function validateResolvedArtifactsScope(
+  manifest: Manifest,
+  artifacts: Artifact[],
+): Issue[] {
+  if (manifest.scope === "home") return [];
+  return artifacts.some((artifact) => artifact.domain === "global")
+    ? [{ path: "", message: GLOBAL_RESERVED_MESSAGE }]
+    : [];
 }
 
 /**
@@ -121,7 +154,9 @@ export const validateSkillNames = validateSkillSpecs;
 
 function extractSkillFrontmatter(
   content: string,
-): { ok: true; value: Record<string, unknown> } | { ok: false; message: string } {
+):
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; message: string } {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) {
     return {
