@@ -82,6 +82,7 @@ The plan and standard mostly align, but implementers should resolve these detail
 - Automatic `.gitignore` edits.
 - JSON output mode for `list`.
 - Cross-platform binary publishing beyond the current platform executable.
+- Bare-repo cache pruning — `cache prune` currently removes only extracted trees. Bare repos under `~/.cache/agent-library/repos/` are never cleaned up. A future `cache prune --repos` command should scan the registry for referenced repos, compare against the `repos/` directory, and remove unreferenced bare clones.
 
 ## Related ADRs
 
