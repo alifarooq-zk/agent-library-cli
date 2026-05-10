@@ -7,7 +7,7 @@ import type { ArtifactKind } from "../artifact/types.ts";
 
 export const listCommand = new Command("list")
   .description("List domains, profiles, or artifacts from the home library")
-  .addHelpCommand(false);
+  .helpCommand(false);
 
 listCommand
   .command("domains")
@@ -32,7 +32,10 @@ listCommand
     }
     const profiles = readdirSync(profilesDir)
       .sort()
-      .filter((entry) => statSync(join(profilesDir, entry)).isFile() && entry.endsWith(".yml"));
+      .filter(
+        (entry) =>
+          statSync(join(profilesDir, entry)).isFile() && entry.endsWith(".yml"),
+      );
     if (profiles.length === 0) {
       process.stderr.write(`no profiles found in ${profilesDir}\n`);
       return;
