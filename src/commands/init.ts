@@ -7,11 +7,17 @@ import {
   intro,
   isCancel,
   groupMultiselect,
+  note,
   outro,
   select,
   text,
 } from "@clack/prompts";
-import type { Manifest } from "../manifest/schema.ts";
+import type { Manifest, ManifestInput } from "../manifest/schema.ts";
+import {
+  GLOBAL_RESERVED_MESSAGE,
+  includeReferencesGlobal,
+  validateResolvedArtifactsScope,
+} from "../manifest/validate.ts";
 import {
   ResultKit,
   type Result,
@@ -23,6 +29,7 @@ import { resolveIncludes } from "../resolve/sources.ts";
 
 type InitMode = Manifest["mode"];
 type InitTarget = Manifest["target"];
+type InitScope = Manifest["scope"];
 type InitError = TypedErrorUnion<
   | "init_manifest_exists"
   | "init_invalid_mode"
@@ -36,7 +43,11 @@ type InitError = TypedErrorUnion<
 export const initCommand = new Command("init")
   .description("Create a .agent-library.yml manifest")
   .argument("[path]", "path where .agent-library.yml should be created", ".")
-  .action(async (projectRoot: string) => {
+  .option(
+    "--global",
+    "create a home-scoped manifest for a home AI-config directory (e.g. ~/.copilot, ~/.agents); allows global-domain includes that are otherwise reserved and forbidden in project manifests",
+  )
+  .action(async (projectRoot: string, opts: { global?: boolean }) => {
     const absProjectRoot = resolve(projectRoot);
     const manifestPath = join(absProjectRoot, ".agent-library.yml");
 
@@ -48,11 +59,14 @@ export const initCommand = new Command("init")
       });
     }
 
+    const scope: InitScope = opts.global === true ? "home" : "project";
+
     if (!process.stdin.isTTY) {
       const homeRoot = resolveHomeRoot();
       const manifestResult = await manifestFromStdinDefaults(
         homeRoot,
         absProjectRoot,
+        scope,
       );
       if (!manifestResult.ok) exitWithError(manifestResult.error);
 
@@ -67,6 +81,15 @@ export const initCommand = new Command("init")
 
     intro("agent-library init");
 
+    if (scope === "home") {
+      note(
+        'This manifest will be scoped to "home", which allows global-domain\n' +
+          "includes reserved for home AI-config directories (e.g. ~/.copilot,\n" +
+          "~/.agents). Do not use --global for ordinary project manifests.",
+        "home-scoped manifest",
+      );
+    }
+
     const mode = await promptMode();
     if (!mode.ok) exitWithError(mode.error);
 
@@ -74,11 +97,12 @@ export const initCommand = new Command("init")
     if (!target.ok) exitWithError(target.error);
 
     const homeRoot = resolveHomeRoot();
-    const include = await promptInclude(homeRoot, absProjectRoot);
+    const include = await promptInclude(homeRoot, absProjectRoot, scope);
     if (!include.ok) exitWithError(include.error);
 
-    const manifest: Manifest = {
+    const manifest: ManifestInput = {
       version: 1,
+      ...(scope === "home" ? { scope } : {}),
       mode: mode.value,
       target: target.value,
       include: include.value,
@@ -92,12 +116,18 @@ export const initCommand = new Command("init")
 async function manifestFromStdinDefaults(
   homeRoot: string,
   projectRoot: string,
-): Promise<Result<Manifest, InitError>> {
+  scope: InitScope,
+): Promise<Result<ManifestInput, InitError>> {
   const raw = await new Response(Bun.stdin.stream()).text();
   const lines = raw.split(/\r?\n/);
   const mode = valueOrDefault(lines[0], "generated");
   const target = valueOrDefault(lines[1], "both");
-  const includeInput = valueOrDefault(lines[2], "profile:universal");
+  const includeInput = valueOrDefault(
+    lines[2],
+    scope === "home"
+      ? "profile:universal"
+      : await defaultProjectInclude(homeRoot),
+  );
 
   if (mode !== "generated" && mode !== "vendored") {
     return ResultKit.failure({
@@ -121,6 +151,16 @@ async function manifestFromStdinDefaults(
     });
   }
 
+  if (
+    scope !== "home" &&
+    include.some((entry) => includeReferencesGlobal(entry))
+  ) {
+    return ResultKit.failure({
+      type: "init_invalid_include" as const,
+      message: GLOBAL_RESERVED_MESSAGE,
+    });
+  }
+
   const resolved = await resolveIncludes(include, {
     kind: "project",
     homeRoot,
@@ -133,12 +173,40 @@ async function manifestFromStdinDefaults(
     });
   }
 
+  const scopeIssues = validateResolvedArtifactsScope(
+    {
+      version: 1,
+      scope,
+      mode: mode as InitMode,
+      target: target as InitTarget,
+      include,
+    },
+    resolved.value,
+  );
+  if (scopeIssues.length > 0) {
+    return ResultKit.failure({
+      type: "init_invalid_include" as const,
+      message: scopeIssues.map((i) => i.message).join("\n"),
+    });
+  }
+
   return ResultKit.success({
     version: 1,
+    ...(scope === "home" ? { scope } : {}),
     mode,
     target,
     include,
   });
+}
+
+async function defaultProjectInclude(homeRoot: string): Promise<string> {
+  // Fall back to "profile:universal" rather than "" so that when all domains
+  // are global, the user sees GLOBAL_RESERVED_MESSAGE instead of the
+  // misleading "include must have at least one entry" error.
+  return (
+    discoverDomains(homeRoot).find((domain) => domain !== "global") ??
+    "profile:universal"
+  );
 }
 
 function valueOrDefault(value: string | undefined, fallback: string): string {
@@ -198,8 +266,11 @@ async function promptTarget(): Promise<Result<InitTarget, InitError>> {
 async function promptInclude(
   homeRoot: string,
   projectRoot: string,
+  scope: InitScope,
 ): Promise<Result<string[], InitError>> {
-  const groups = buildIncludeGroups(homeRoot);
+  const groups = await buildIncludeGroups(homeRoot, {
+    allowGlobal: scope === "home",
+  });
   const fallbackInclude = defaultIncludeSelection(groups);
   let selected: string[] = [];
 
@@ -256,6 +327,13 @@ async function promptInclude(
     });
   }
 
+  if (scope !== "home" && all.some((entry) => includeReferencesGlobal(entry))) {
+    return ResultKit.failure({
+      type: "init_invalid_include" as const,
+      message: GLOBAL_RESERVED_MESSAGE,
+    });
+  }
+
   const resolved = await resolveIncludes(all, {
     kind: "project",
     homeRoot,
@@ -265,6 +343,23 @@ async function promptInclude(
     return ResultKit.failure({
       type: "init_invalid_include" as const,
       message: resolved.error.message,
+    });
+  }
+
+  const scopeIssues = validateResolvedArtifactsScope(
+    {
+      version: 1,
+      scope,
+      mode: "generated",
+      target: "both",
+      include: all,
+    },
+    resolved.value,
+  );
+  if (scopeIssues.length > 0) {
+    return ResultKit.failure({
+      type: "init_invalid_include" as const,
+      message: scopeIssues.map((i) => i.message).join("\n"),
     });
   }
 
@@ -291,9 +386,32 @@ function defaultIncludeSelection(
   return [];
 }
 
-function buildIncludeGroups(
+async function profileAllowedForScope(
   homeRoot: string,
-): Record<string, Array<{ value: string; label: string; hint?: string }>> {
+  profileName: string,
+  allowGlobal: boolean,
+): Promise<boolean> {
+  if (allowGlobal) return true;
+  const resolved = await resolveIncludes([`profile:${profileName}`], {
+    kind: "home",
+    homeRoot,
+  });
+  if (!resolved.ok) {
+    // Only suppress global-domain scope violations (which we handle by hiding
+    // the profile). Any other error means the profile itself is broken — show
+    // it so downstream validation surfaces the real error with full context.
+    if (resolved.error.type === "profile_not_found") return false;
+    return true;
+  }
+  return resolved.value.every((artifact) => artifact.domain !== "global");
+}
+
+export async function buildIncludeGroups(
+  homeRoot: string,
+  options: { allowGlobal: boolean } = { allowGlobal: true },
+): Promise<
+  Record<string, Array<{ value: string; label: string; hint?: string }>>
+> {
   const groups: Record<
     string,
     Array<{ value: string; label: string; hint?: string }>
@@ -314,14 +432,27 @@ function buildIncludeGroups(
         }
       });
     if (profiles.length > 0) {
-      groups["Profiles"] = profiles.map((entry) => {
+      const profileOptions: Array<{ value: string; label: string }> = [];
+      for (const entry of profiles) {
         const name = entry.slice(0, -4);
-        return { value: `profile:${name}`, label: `profile:${name}` };
-      });
+        if (
+          !(await profileAllowedForScope(homeRoot, name, options.allowGlobal))
+        ) {
+          continue;
+        }
+        profileOptions.push({
+          value: `profile:${name}`,
+          label: `profile:${name}`,
+        });
+      }
+      if (profileOptions.length > 0) {
+        groups["Profiles"] = profileOptions;
+      }
     }
   }
 
   for (const domain of discoverDomains(homeRoot)) {
+    if (!options.allowGlobal && domain === "global") continue;
     const artifacts = discoverDomain(homeRoot, domain);
     const entries: Array<{ value: string; label: string; hint?: string }> = [];
 
@@ -371,7 +502,7 @@ function uniqueIncludes(entries: string[]): string[] {
 
 function writeManifest(
   manifestPath: string,
-  manifest: Manifest,
+  manifest: ManifestInput,
 ): Promise<Result<number, InitError>> {
   return ResultKit.fromPromise(
     Bun.write(manifestPath, stringify(manifest, { lineWidth: 0 })),

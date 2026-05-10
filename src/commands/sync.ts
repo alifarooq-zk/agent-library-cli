@@ -1,7 +1,12 @@
 import { Command } from "commander";
 import { join, resolve } from "node:path";
 import { loadManifest } from "../manifest/load.ts";
-import { validateManifest, validateSkillSpecs } from "../manifest/validate.ts";
+import {
+  formatIssue,
+  validateManifest,
+  validateResolvedArtifactsScope,
+  validateSkillSpecs,
+} from "../manifest/validate.ts";
 import { ManifestSchema } from "../manifest/schema.ts";
 import { resolveIncludes } from "../resolve/sources.ts";
 import { resolveHomeRoot } from "../util/home.ts";
@@ -39,7 +44,7 @@ export const syncCommand = new Command("sync")
 
       if (structuralIssues.length > 0) {
         for (const issue of structuralIssues) {
-          process.stderr.write(`${issue.path}: ${issue.message}\n`);
+          process.stderr.write(`${formatIssue(issue)}\n`);
         }
 
         process.exit(1);
@@ -47,7 +52,11 @@ export const syncCommand = new Command("sync")
 
       // Safe to parse into a typed Manifest now — structural validation already passed
       const manifest = ManifestSchema.parse(loaded.value);
-      const ctx = { kind: "project" as const, homeRoot, projectRoot: absProjectRoot };
+      const ctx = {
+        kind: "project" as const,
+        homeRoot,
+        projectRoot: absProjectRoot,
+      };
 
       // Resolve artifacts once; use the result for all subsequent validation and the plan
       const resolveResult = await resolveIncludes(manifest.include, ctx);
@@ -58,6 +67,19 @@ export const syncCommand = new Command("sync")
       }
 
       const artifacts = resolveResult.value;
+
+      const resolvedScopeIssues = validateResolvedArtifactsScope(
+        manifest,
+        artifacts,
+      );
+
+      if (resolvedScopeIssues.length > 0) {
+        for (const issue of resolvedScopeIssues) {
+          process.stderr.write(`${formatIssue(issue)}\n`);
+        }
+
+        process.exit(1);
+      }
 
       // SKILL.md name validation (uses already-resolved artifacts — no extra resolve pass)
       const nameIssues = await validateSkillSpecs(artifacts);
