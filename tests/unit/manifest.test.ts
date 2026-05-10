@@ -2,11 +2,16 @@ import { describe, it, expect } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
+  formatIssue,
   validateManifest,
   validateSkillSpecs,
 } from "../../src/manifest/validate.ts";
+import { ManifestSchema } from "../../src/manifest/schema.ts";
 import { loadManifest } from "../../src/manifest/load.ts";
-import { createSkillArtifact, type Artifact } from "../../src/artifact/types.ts";
+import {
+  createSkillArtifact,
+  type Artifact,
+} from "../../src/artifact/types.ts";
 
 describe("validateManifest", () => {
   it("accepts a fully populated valid manifest", async () => {
@@ -66,6 +71,81 @@ describe("validateManifest", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.type).toBe("yaml_read_error");
+  });
+
+  it("defaults missing scope to project when parsing manifest input", () => {
+    const parsed = ManifestSchema.safeParse({
+      version: 1,
+      mode: "generated",
+      target: "both",
+      include: ["frontend/skills/react-useeffect"],
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.scope).toBe("project");
+  });
+
+  it("accepts a home-scoped valid manifest fixture", async () => {
+    const result = await loadManifest("tests/fixtures/manifests/valid.yml");
+    if (!result.ok)
+      throw new Error(`Expected manifest to load: ${result.error.message}`);
+    const parsed = ManifestSchema.safeParse(result.value);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.scope).toBe("home");
+  });
+
+  it("rejects direct global includes in project scope", () => {
+    const issues = validateManifest({
+      version: 1,
+      mode: "generated",
+      target: "both",
+      include: ["global"],
+    });
+
+    expect(issues).toEqual([
+      {
+        path: "",
+        message:
+          '"global" domain is reserved for the home manifest. Remove it from include or re-run `init --global`.',
+      },
+    ]);
+  });
+
+  it("rejects global artifact paths in project scope", () => {
+    const issues = validateManifest({
+      version: 1,
+      mode: "generated",
+      target: "both",
+      include: ["global/skills/writing-plans"],
+    });
+
+    expect(issues[0].path).toBe("");
+    expect(issues[0].message).toContain('"global" domain is reserved');
+  });
+
+  it("allows global includes in home scope", () => {
+    const issues = validateManifest({
+      version: 1,
+      scope: "home",
+      mode: "generated",
+      target: "both",
+      include: ["global", "global/skills/writing-plans"],
+    });
+
+    expect(issues).toEqual([]);
+  });
+
+  it("formats manifest-level issues as error lines", () => {
+    expect(
+      formatIssue({
+        path: "",
+        message:
+          '"global" domain is reserved for the home manifest. Remove it from include or re-run `init --global`.',
+      }),
+    ).toBe(
+      'error: "global" domain is reserved for the home manifest. Remove it from include or re-run `init --global`.',
+    );
   });
 });
 

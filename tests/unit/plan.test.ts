@@ -24,6 +24,7 @@ describe("buildPlan", () => {
   it("plans skills, commands, agents, dual targets, and adapters", async () => {
     const manifest: Manifest = {
       version: 1,
+      scope: "home",
       mode: "generated",
       target: "both",
       include: ["global", "frontend/skills/react-useeffect"],

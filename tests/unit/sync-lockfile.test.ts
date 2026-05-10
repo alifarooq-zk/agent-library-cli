@@ -39,10 +39,12 @@ function paths() {
   };
 }
 
-async function writeSources(input: {
-  readonly adapter?: boolean;
-  readonly sourceText?: string;
-} = {}) {
+async function writeSources(
+  input: {
+    readonly adapter?: boolean;
+    readonly sourceText?: string;
+  } = {},
+) {
   const p = paths();
   await Bun.write(p.sourceFile, input.sourceText ?? "# Demo\n");
   if (input.adapter) await Bun.write(p.adapterSource, "Adapter note\n");
@@ -77,10 +79,12 @@ function makeWrite(input: { readonly adapter?: boolean } = {}): PlanFileWrite {
   };
 }
 
-function makePlan(input: {
-  readonly mode?: "generated" | "vendored";
-  readonly adapter?: boolean;
-} = {}): SyncPlan {
+function makePlan(
+  input: {
+    readonly mode?: "generated" | "vendored";
+    readonly adapter?: boolean;
+  } = {},
+): SyncPlan {
   return {
     mode: input.mode ?? "generated",
     target: "claude",
@@ -127,14 +131,18 @@ describe("sync lockfile failure paths", () => {
     expect(result.error.details?.path).toBe(paths().adapterSource);
   });
 
-  it("throws an invariant error when written content is missing", async () => {
+  it("returns a typed failure when written content is missing", async () => {
     await writeSources();
 
-    await expect(
-      buildLockfileFromWrittenContents(makePlan(), new Map()),
-    ).rejects.toThrow(
-      `invariant: content missing for ${paths().targetRelative}`,
+    const result = await buildLockfileFromWrittenContents(
+      makePlan(),
+      new Map(),
     );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.type).toBe("sync_file_read_error");
+    expect(result.error.details?.path).toBe(paths().targetRelative);
   });
 
   it("hashes empty written content instead of stale disk content", async () => {
@@ -165,9 +173,9 @@ describe("sync lockfile failure paths", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.type).toBe("sync_file_read_error");
-    expect(await Bun.file(join(paths().projectRoot, ".agent-library.lock")).exists()).toBe(
-      false,
-    );
+    expect(
+      await Bun.file(join(paths().projectRoot, ".agent-library.lock")).exists(),
+    ).toBe(false);
   });
 
   it("vendored sync returns a typed failure when a planned adapter disappears", async () => {
