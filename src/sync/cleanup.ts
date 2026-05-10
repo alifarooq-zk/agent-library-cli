@@ -4,9 +4,12 @@ import type { Lockfile } from "../lockfile/schema.ts";
 import { GENERATED_MARKER } from "./header.ts";
 import { findYamlFrontmatterEnd } from "./adapters.ts";
 
+export type CleanupSkipReason =
+  "file does not carry the generated ownership header";
+
 export interface CleanupResult {
   removed: number;
-  skipped: { path: string; reason: string }[];
+  skipped: { path: string; reason: CleanupSkipReason }[];
 }
 
 export interface StaleGeneratedTarget {
@@ -48,10 +51,10 @@ export async function findStaleGeneratedTargets(
   newTargetPaths: Set<string>,
 ): Promise<{
   removable: StaleGeneratedTarget[];
-  skipped: { path: string; reason: string }[];
+  skipped: { path: string; reason: CleanupSkipReason }[];
 }> {
   const removable: StaleGeneratedTarget[] = [];
-  const skipped: { path: string; reason: string }[] = [];
+  const skipped: { path: string; reason: CleanupSkipReason }[] = [];
 
   // Collect all target paths from the previous lockfile
   for (const artifact of previousLockfile.artifacts) {

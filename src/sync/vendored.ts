@@ -21,12 +21,14 @@ import {
   type TargetLockEntry,
 } from "./lockfile.ts";
 
+export type VendoredSkipReason =
+  | "locally edited"
+  | "pre-existing file, no lockfile to verify ownership";
+
 export interface VendoredSkippedFile {
   path: string;
   sourceArtifact: string;
-  reason:
-    | "locally edited"
-    | "pre-existing file, no lockfile to verify ownership";
+  reason: VendoredSkipReason;
 }
 
 export interface VendoredSyncResult {

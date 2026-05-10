@@ -1,5 +1,6 @@
 import type { SyncPlan } from "./plan.ts";
 import { writeArtifactId, writeArtifactKind } from "./plan.ts";
+import type { VendoredSkipReason } from "./vendored.ts";
 
 interface SyncSummaryBase {
   readonly projectRoot: string;
@@ -19,7 +20,10 @@ export type SyncSummaryData =
   | (SyncSummaryBase & {
       readonly mode: "vendored";
       readonly removedStale: 0;
-      readonly vendoredSkipped: readonly { path: string; reason: string }[];
+      readonly vendoredSkipped: readonly {
+        readonly path: string;
+        readonly reason: VendoredSkipReason;
+      }[];
     });
 
 /**
@@ -43,7 +47,9 @@ export function printSummary(data: SyncSummaryData): void {
     const locallyEditedCount = skipped.filter(
       (item) => item.reason === "locally edited",
     ).length;
-    lines.push(`Vendored files skipped (locally edited): ${locallyEditedCount}`);
+    lines.push(
+      `Vendored files skipped (locally edited): ${locallyEditedCount}`,
+    );
     for (const item of skipped) {
       lines.push(`Skipped: ${item.path} (${item.reason})`);
     }

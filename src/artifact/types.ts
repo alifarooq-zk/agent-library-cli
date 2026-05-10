@@ -44,6 +44,9 @@ export function artifactBasename(value: string): ArtifactBasename {
 }
 
 export function absolutePath(value: string): AbsolutePath {
+  if (!value.startsWith("/")) {
+    throw new Error(`Expected an absolute path but got: ${value}`);
+  }
   return value as AbsolutePath;
 }
 
@@ -108,9 +111,9 @@ export function createAgentArtifact(input: {
   };
 }
 
-export function withArtifactId(
-  artifact: Artifact,
+export function withArtifactId<T extends Artifact>(
+  artifact: T,
   id: string | ArtifactId,
-): Artifact {
-  return { ...artifact, id: artifactId(id) };
+): T {
+  return { ...artifact, id: artifactId(id) } as T;
 }

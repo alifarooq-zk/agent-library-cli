@@ -1,7 +1,7 @@
 export interface CollisionIssue {
-  targetPath: string;
-  sources: string[];
-  message: string;
+  readonly targetPath: string;
+  readonly sources: [string, string, ...string[]];
+  readonly message: string;
 }
 
 /**
@@ -25,7 +25,7 @@ export function detectCollisions(
     if (sources.length > 1) {
       issues.push({
         targetPath,
-        sources,
+        sources: sources as [string, string, ...string[]],
         message: `Target path '${targetPath}' is claimed by multiple sources: ${sources.join(", ")}`,
       });
     }
