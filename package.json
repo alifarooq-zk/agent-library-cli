@@ -4,7 +4,7 @@
   "type": "module",
   "bin": { "agent-library": "./bin/agent-library" },
   "scripts": {
-    "build": "bun build src/cli.ts --compile --target=bun-linux-x64 --outfile bin/agent-library",
+    "build": "bun build src/cli.ts --compile --target=bun-windows-x64 --outfile bin/agent-library.exe",
     "typecheck": "tsc --noEmit",
     "dev": "bun run src/cli.ts",
     "test": "bun test",
