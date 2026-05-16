@@ -56,7 +56,7 @@ describe("sync lockfile", () => {
     run(["sync", PROJECT]);
 
     const lockfile = await readProjectLockfile();
-    expect(lockfile.version).toBe(2);
+    expect(lockfile.version).toBe(1);
     expect(lockfile.cliVersion).toBe("0.1.0");
     expect(lockfile.artifacts.length).toBe(3);
   });

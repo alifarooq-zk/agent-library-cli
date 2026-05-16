@@ -124,6 +124,17 @@ describe("validateManifest", () => {
     expect(issues[0].message).toContain('"global" domain is reserved');
   });
 
+  it("allows global includes in project scope when source is set", () => {
+    const issues = validateManifest({
+      version: 1,
+      mode: "generated",
+      target: "both",
+      include: ["global/skills/writing-plans"],
+      source: { type: "github", repo: "org/repo", ref: "main" },
+    });
+    expect(issues).toEqual([]);
+  });
+
   it("allows global includes in home scope", () => {
     const issues = validateManifest({
       version: 1,
