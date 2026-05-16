@@ -21,7 +21,7 @@ Write `.agent-library.lock` after sync. The lockfile records:
 - Sync timestamp.
 - CLI version.
 
-Current lockfiles use schema version 2. Version 1 lockfiles that used nullable `adapterSource` and `adapterHash` fields are not migrated automatically.
+Current lockfiles use schema version 1. The adapter state field uses a discriminated union (`{ kind: "none" }` or `{ kind: "applied", source, hash }`). An optional `source` block records the GitHub repo, ref, and resolved SHA when sync was driven by a remote source.
 
 Vendored updates compare the current target hash to the previous lockfile target hash. If they differ, sync treats the file as locally edited and skips it.
 
