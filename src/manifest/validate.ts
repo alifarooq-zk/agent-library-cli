@@ -33,6 +33,7 @@ export function validateManifest(input: unknown): Issue[] {
 
   if (
     r.data.scope !== "home" &&
+    !r.data.source &&
     r.data.include.some((entry) => includeReferencesGlobal(entry))
   ) {
     return [{ path: "", message: GLOBAL_RESERVED_MESSAGE }];
@@ -45,7 +46,7 @@ export function validateResolvedArtifactsScope(
   manifest: Manifest,
   artifacts: Artifact[],
 ): Issue[] {
-  if (manifest.scope === "home") return [];
+  if (manifest.scope === "home" || manifest.source) return [];
   return artifacts.some((artifact) => artifact.domain === "global")
     ? [{ path: "", message: GLOBAL_RESERVED_MESSAGE }]
     : [];

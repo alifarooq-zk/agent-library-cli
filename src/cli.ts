@@ -4,6 +4,7 @@ import { validateCommand } from "./commands/validate.ts";
 import { listCommand } from "./commands/list.ts";
 import { syncCommand } from "./commands/sync.ts";
 import { initCommand } from "./commands/init.ts";
+import { cacheCommand } from "./commands/cache.ts";
 
 const program = new Command()
   .name("agent-library")
@@ -14,5 +15,6 @@ program.addCommand(validateCommand);
 program.addCommand(listCommand);
 program.addCommand(syncCommand);
 program.addCommand(initCommand);
+program.addCommand(cacheCommand);
 
 program.parse();

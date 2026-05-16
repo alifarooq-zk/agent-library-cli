@@ -122,11 +122,12 @@ export async function buildLockfileFromTargetEntries(
   }
 
   return ResultKit.success({
-    version: 2,
+    version: 1 as const,
     cliVersion: (pkg as { version: string }).version,
     mode: plan.mode,
     target: plan.target,
     syncedAt: new Date().toISOString(),
+    source: plan.source,
     include: [...plan.include],
     artifacts,
   });

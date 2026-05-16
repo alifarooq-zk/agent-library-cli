@@ -50,12 +50,12 @@ export async function readLockfile(
     rawResult.value &&
     typeof rawResult.value === "object" &&
     "version" in rawResult.value &&
-    rawResult.value.version === 1
+    rawResult.value.version === 2
   ) {
     return ResultKit.failure({
       type: "lockfile_schema_error" as const,
       message:
-        "lockfile version 1 is no longer supported; delete .agent-library.lock and run sync to regenerate",
+        "lockfile version 2 is no longer supported; delete .agent-library.lock and run sync to regenerate",
     });
   }
 

@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 
 /**
@@ -8,7 +8,9 @@ import { homedir } from "node:os";
  *   3. ~/.agent-library
  */
 export function resolveHomeRoot(flagValue?: string): string {
-  if (flagValue) return flagValue;
-  if (process.env.HOME_AGENT_LIBRARY) return process.env.HOME_AGENT_LIBRARY;
+  if (flagValue) return resolve(flagValue);
+  if (process.env.HOME_AGENT_LIBRARY) {
+    return resolve(process.env.HOME_AGENT_LIBRARY);
+  }
   return join(homedir(), ".agent-library");
 }

@@ -9,22 +9,30 @@ export const LockfileAdapterSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+export const LockfileSourceSchema = z.object({
+  repo: z.string(),
+  sha: z.string().regex(/^[0-9a-f]{40}$/, "sha must be a 40-character lowercase hex SHA-1"),
+  ref: z.string(),
+  fetchedAt: z.iso.datetime({ message: "fetchedAt must be an ISO 8601 datetime string" }),
+});
+
 export const LockfileSchema = z.object({
-  version: z.literal(2),
+  version: z.literal(1),
   cliVersion: z.string(),
   mode: z.enum(["generated", "vendored"]),
   target: z.enum(["codex", "claude", "both"]),
   syncedAt: z.iso.datetime({
     message: "syncedAt must be an ISO 8601 datetime string",
   }),
-  include: z.array(z.string()), // original manifest entries
+  source: LockfileSourceSchema.optional(),
+  include: z.array(z.string()),
   artifacts: z.array(
     z.object({
       id: z.string(),
       kind: z.enum(["skill", "command", "agent"]),
       files: z.array(
         z.object({
-          source: z.string(), // path relative to libraryRoot
+          source: z.string(),
           sourceHash: z
             .string()
             .regex(
@@ -33,7 +41,7 @@ export const LockfileSchema = z.object({
             ),
           targets: z.array(
             z.object({
-              path: z.string(), // path relative to projectRoot
+              path: z.string(),
               targetHash: z
                 .string()
                 .regex(
@@ -50,3 +58,4 @@ export const LockfileSchema = z.object({
 });
 
 export type Lockfile = z.infer<typeof LockfileSchema>;
+export type LockfileSource = z.infer<typeof LockfileSourceSchema>;

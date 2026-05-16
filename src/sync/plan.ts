@@ -16,6 +16,7 @@ import {
   type TargetSelection,
 } from "../artifact/target.ts";
 import { findAdapter } from "./adapters.ts";
+import type { LockfileSource } from "../lockfile/schema.ts";
 
 export type PlannedContentKind = "markdown" | "binary";
 
@@ -36,12 +37,15 @@ export interface PlanFileWrite {
   readonly adapter: PlanAdapterSpec;
 }
 
+export type SyncPlanSource = LockfileSource;
+
 export interface SyncPlan {
   readonly mode: "generated" | "vendored";
   readonly target: TargetSelection;
   readonly projectRoot: AbsolutePath;
   /** Original manifest include entries (for lockfile). */
   readonly include: readonly string[];
+  readonly source?: SyncPlanSource;
   readonly writes: readonly PlanFileWrite[];
 }
 
@@ -74,6 +78,7 @@ export function buildPlan(
   manifest: Manifest,
   artifacts: Artifact[],
   projectRoot: string,
+  source?: SyncPlanSource,
 ): SyncPlan {
   const writes: PlanFileWrite[] = [];
   const targetDirs: TargetDir[] =
@@ -147,6 +152,7 @@ export function buildPlan(
     target: manifest.target,
     projectRoot: absolutePath(projectRoot),
     include: manifest.include,
+    source,
     writes,
   };
 }
