@@ -133,8 +133,8 @@ The plan and standard mostly align, but implementers should resolve these detail
 - [ADR 0008: Bun TypeScript CLI Stack](docs/adr/0008-bun-typescript-cli-stack.md)
 - [ADR 0009: Project-Local Source Includes](docs/adr/0009-project-local-source-includes.md)
 - [ADR 0010: CLI Command Interaction Model](docs/adr/0010-cli-command-interaction-model.md)
-- [ADR 0011: GitHub-Only Source](docs/adr/0011-github-only-source.md) *(planned)*
-- [ADR 0012: `--home` Flag Subcommand Overload](docs/adr/0012-home-flag-subcommand-overload.md) *(planned)*
-- [ADR 0013: `init` On-Demand Source Materialisation](docs/adr/0013-init-on-demand-source-materialisation.md) *(planned)*
-- [ADR 0014: `list` and `validate` Manifest-Aware](docs/adr/0014-list-and-validate-manifest-aware.md) *(planned)*
-- [ADR 0015: Lockfile Source Preserved Under `--home`](docs/adr/0015-lockfile-source-preserved-under-home.md) *(planned)*
+- [ADR 0011: GitHub-Only Source](docs/adr/0011-github-only-source.md)
+- [ADR 0012: `--home` Flag Subcommand Overload](docs/adr/0012-home-flag-subcommand-overload.md)
+- [ADR 0013: `init` On-Demand Source Materialisation](docs/adr/0013-init-on-demand-source-materialisation.md)
+- [ADR 0014: `list` and `validate` Manifest-Aware](docs/adr/0014-list-and-validate-manifest-aware.md)
+- [ADR 0015: Lockfile Source Preserved Under `--home`](docs/adr/0015-lockfile-source-preserved-under-home.md)

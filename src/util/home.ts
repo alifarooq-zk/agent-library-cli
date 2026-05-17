@@ -14,3 +14,42 @@ export function resolveHomeRoot(flagValue?: string): string {
   }
   return join(homedir(), ".agent-library");
 }
+
+export function resolveHomePaths(
+  platform: string = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  override?: string,
+): {
+  manifest: string;
+  lockfile: string;
+  claude: string;
+  agents: string;
+} {
+  let base: string;
+  if (platform === "win32") {
+    if (override) base = resolve(override);
+    else base = env.USERPROFILE || homedir();
+
+    return {
+      manifest: join(base, ".agent-library.yml"),
+      lockfile: join(base, ".agent-library.lock"),
+      claude: join(base, ".claude"),
+      agents: join(base, ".agents"),
+    };
+  }
+
+  // POSIX-style output for non-win32 platforms
+  if (override) base = resolve(override);
+  else base = env.HOME || homedir();
+
+  // Normalize backslashes to forward slashes just in case
+  const posixBase = base.replace(/\\/g, "/");
+  const stripTrailing = posixBase.replace(/\/$/, "");
+
+  return {
+    manifest: `${stripTrailing}/.agent-library.yml`,
+    lockfile: `${stripTrailing}/.agent-library.lock`,
+    claude: `${stripTrailing}/.claude`,
+    agents: `${stripTrailing}/.agents`,
+  };
+}

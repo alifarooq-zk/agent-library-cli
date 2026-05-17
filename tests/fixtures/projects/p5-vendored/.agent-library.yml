@@ -3,3 +3,7 @@ mode: vendored
 target: claude
 include:
   - frontend/skills/react-useeffect
+source:
+  type: github
+  repo: org/repo
+  ref: main

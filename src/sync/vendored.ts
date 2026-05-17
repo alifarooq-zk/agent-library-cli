@@ -57,7 +57,8 @@ export async function runVendoredSync(
     return ResultKit.success({ written: 0, skipped: [] });
   }
 
-  const lockfilePath = join(plan.projectRoot, ".agent-library.lock");
+  const lockfilePath =
+    options.lockfilePath ?? join(plan.projectRoot, ".agent-library.lock");
   const previousLockfileResult = await readLockfile(lockfilePath);
   if (!previousLockfileResult.ok) return previousLockfileResult;
   const previousLockfile = previousLockfileResult.value;

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,11 +12,10 @@ export async function createTestBareRepo(
   sourceDir: string,
 ): Promise<TestBareRepo> {
   const work = mkdtempSync(join(tmpdir(), "al-work-"));
-  const sourceContents = `${sourceDir}/.`;
   await Bun.$`git -C ${work} init --initial-branch main`.quiet();
   await Bun.$`git -C ${work} config user.email "test@test.com"`.quiet();
   await Bun.$`git -C ${work} config user.name "Test"`.quiet();
-  await Bun.$`cp -R ${sourceContents} ${work}`.quiet();
+  cpSync(sourceDir, work, { recursive: true });
   await Bun.$`git -C ${work} add -A`.quiet();
   await Bun.$`git -C ${work} commit -m "init"`.quiet();
   const commitSha = (await Bun.$`git -C ${work} rev-parse HEAD`.text()).trim();

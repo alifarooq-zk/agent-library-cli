@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { loadManifest } from "../manifest/load.ts";
 import {
   formatIssue,
@@ -10,7 +11,8 @@ import {
 import { ManifestSchema } from "../manifest/schema.ts";
 import { resolveIncludes } from "../resolve/sources.ts";
 import { resolveSource } from "../resolve/source.ts";
-import { resolveHomeRoot } from "../util/home.ts";
+import { resolveHomePaths, resolveHomeRoot } from "../util/home.ts";
+import { readLockfile } from "../lockfile/read.ts";
 import {
   buildPlan,
   writeArtifactId,
@@ -23,16 +25,24 @@ import { printSummary, countByKind } from "../sync/summary.ts";
 import { detectCollisions } from "../artifact/collision.ts";
 import { upsertProjectEntry } from "../cache/registry.ts";
 
+interface SyncOptions {
+  home?: string;
+  global?: boolean;
+  dryRun?: boolean;
+  update?: boolean;
+}
+
 export const syncCommand = new Command("sync")
   .description("Sync agent library assets into a project")
   .argument(
-    "<project-root>",
+    "[project-root]",
     "path to the project root containing .agent-library.yml",
   )
   .option(
     "--home <path>",
     "override the home library root (bypasses source resolution)",
   )
+  .option("--global", "sync the home-scoped manifest from the home base")
   .option("--dry-run", "print the sync plan without writing files")
   .option(
     "--update",
@@ -40,14 +50,43 @@ export const syncCommand = new Command("sync")
   )
   .action(
     async (
-      projectRoot: string,
-      opts: { home?: string; dryRun?: boolean; update?: boolean },
+      projectRoot: string | undefined,
+      opts: SyncOptions,
     ) => {
-      const absProjectRoot = resolve(projectRoot);
-      const manifestPath = join(absProjectRoot, ".agent-library.yml");
-      const lockfilePath = join(absProjectRoot, ".agent-library.lock");
+      const isGlobal = opts.global === true;
+      if (!isGlobal && !projectRoot) {
+        process.stderr.write("error: missing required argument 'project-root'\n");
+        process.exit(1);
+      }
+
+      const homePaths = isGlobal
+        ? resolveHomePaths(process.platform, process.env, opts.home)
+        : null;
+      const absProjectRoot =
+        isGlobal && homePaths
+          ? dirname(homePaths.manifest)
+          : resolve(projectRoot!);
+      const manifestPath =
+        isGlobal && homePaths
+          ? homePaths.manifest
+          : join(absProjectRoot, ".agent-library.yml");
+      const lockfilePath =
+        isGlobal && homePaths
+          ? homePaths.lockfile
+          : join(absProjectRoot, ".agent-library.lock");
       const dryRun = opts.dryRun === true;
       const update = opts.update === true;
+      const libraryTreeOverride = !isGlobal
+        ? opts.home ?? process.env.HOME_AGENT_LIBRARY
+        : undefined;
+      const summaryLockfile = isGlobal ? lockfilePath : ".agent-library.lock";
+
+      if (isGlobal && !existsSync(manifestPath)) {
+        process.stderr.write(
+          `error: no home manifest found at ${manifestPath}; run \`agent-lib init --global\` to create one\n`,
+        );
+        process.exit(1);
+      }
 
       // Load and structurally validate the manifest
       const loaded = await loadManifest(manifestPath);
@@ -57,7 +96,15 @@ export const syncCommand = new Command("sync")
         process.exit(1);
       }
 
-      const structuralIssues = validateManifest(loaded.value);
+      const schemaResult = ManifestSchema.safeParse(loaded.value);
+      const structuralIssues = isGlobal
+        ? schemaResult.success
+          ? []
+          : schemaResult.error.issues.map((i) => ({
+              path: i.path.join("."),
+              message: i.message,
+            }))
+        : validateManifest(loaded.value);
 
       if (structuralIssues.length > 0) {
         for (const issue of structuralIssues) {
@@ -67,13 +114,38 @@ export const syncCommand = new Command("sync")
         process.exit(1);
       }
 
-      // Safe to parse into a typed Manifest now — structural validation already passed
-      const manifest = ManifestSchema.parse(loaded.value);
+      // Safe to cast — structural validation above already exited on any schema error
+      const manifest = schemaResult.data!;
+
+      if (isGlobal && manifest.scope !== "home") {
+        process.stderr.write(
+          `error: home manifest at ${manifestPath} must set scope: home\n`,
+        );
+        process.exit(1);
+      }
       let homeRoot: string;
       let syncPlanSource: SyncPlanSource | undefined;
 
-      if (manifest.source && !opts.home) {
-        const sourceResult = await resolveSource(manifest.source, lockfilePath, {
+      if (libraryTreeOverride) {
+        homeRoot = resolveHomeRoot(libraryTreeOverride);
+        const previousLockfileResult = await readLockfile(lockfilePath);
+        if (!previousLockfileResult.ok) {
+          process.stderr.write(
+            `error: ${previousLockfileResult.error.message}\n`,
+          );
+          process.exit(1);
+        }
+        syncPlanSource = previousLockfileResult.value?.source;
+      } else {
+        const manifestSource = manifest.source;
+        if (!manifestSource) {
+          process.stderr.write(
+            "source: source is required; add a source block with type, repo, and ref\n",
+          );
+          process.exit(1);
+        }
+
+        const sourceResult = await resolveSource(manifestSource, lockfilePath, {
           update,
         });
         if (!sourceResult.ok) {
@@ -82,8 +154,6 @@ export const syncCommand = new Command("sync")
         }
         homeRoot = sourceResult.value.homeRoot;
         syncPlanSource = sourceResult.value.source;
-      } else {
-        homeRoot = resolveHomeRoot(opts.home);
       }
 
       const ctx = {
@@ -155,7 +225,10 @@ export const syncCommand = new Command("sync")
 
       if (manifest.mode === "vendored") {
         // Vendored mode updates/creates files only; it never removes stale files.
-        const syncResult = await runVendoredSync(plan, { dryRun });
+        const syncResult = await runVendoredSync(plan, {
+          dryRun,
+          lockfilePath,
+        });
         if (!syncResult.ok) {
           process.stderr.write(`error: ${syncResult.error.message}\n`);
           process.exit(1);
@@ -163,6 +236,7 @@ export const syncCommand = new Command("sync")
         if (
           !dryRun &&
           syncPlanSource &&
+          !libraryTreeOverride &&
           !(await recordProjectSource(absProjectRoot, syncPlanSource))
         ) {
           process.exit(1);
@@ -179,13 +253,16 @@ export const syncCommand = new Command("sync")
             path: s.path,
             reason: s.reason,
           })),
-          lockfile: ".agent-library.lock",
+          lockfile: summaryLockfile,
           dryRun,
         });
         return;
       }
 
-      const syncResult = await runGeneratedSync(plan, { dryRun });
+      const syncResult = await runGeneratedSync(plan, {
+        dryRun,
+        lockfilePath,
+      });
       if (!syncResult.ok) {
         process.stderr.write(`error: ${syncResult.error.message}\n`);
         process.exit(1);
@@ -193,6 +270,7 @@ export const syncCommand = new Command("sync")
       if (
         !dryRun &&
         syncPlanSource &&
+        !libraryTreeOverride &&
         !(await recordProjectSource(absProjectRoot, syncPlanSource))
       ) {
         process.exit(1);
@@ -205,7 +283,7 @@ export const syncCommand = new Command("sync")
         commands: counts.commands,
         agents: counts.agents,
         removedStale: syncResult.value.removedStale,
-        lockfile: ".agent-library.lock",
+        lockfile: summaryLockfile,
         dryRun,
       });
     },

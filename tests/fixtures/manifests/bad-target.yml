@@ -3,3 +3,7 @@ mode: generated
 target: gemini
 include:
   - global/skills/writing-plans
+source:
+  type: github
+  repo: org/repo
+  ref: main

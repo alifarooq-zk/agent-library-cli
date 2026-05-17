@@ -6,3 +6,7 @@ include:
   - global/skills/writing-plans
   - global/commands/review-pr
   - global/agents/security-reviewer
+source:
+  type: github
+  repo: org/repo
+  ref: main

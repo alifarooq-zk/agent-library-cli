@@ -2,3 +2,7 @@ version: 1
 mode: generated
 target: both
 include: []
+source:
+  type: github
+  repo: org/repo
+  ref: main

@@ -1,6 +1,14 @@
 {
   "name": "agent-library",
   "version": "0.1.0",
+  "description": "Package-managed skills, commands, and agents for Claude and Codex.",
+  "keywords": [
+    "agents",
+    "codex",
+    "claude",
+    "skills",
+    "cli"
+  ],
   "type": "module",
   "bin": { "agent-library": "./bin/agent-library" },
   "scripts": {

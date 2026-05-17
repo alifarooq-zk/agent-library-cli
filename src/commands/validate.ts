@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadManifest } from "../manifest/load.ts";
 import {
@@ -7,8 +8,13 @@ import {
   validateResolvedArtifactsScope,
 } from "../manifest/validate.ts";
 import { ManifestSchema } from "../manifest/schema.ts";
-import { resolveHomeRoot } from "../util/home.ts";
 import { resolveIncludes } from "../resolve/sources.ts";
+import { resolveSource } from "../resolve/source.ts";
+import { readLockfile } from "../lockfile/read.ts";
+
+interface ValidateOptions {
+  resolve?: boolean;
+}
 
 export const validateCommand = new Command("validate")
   .description("Validate a .agent-library.yml manifest")
@@ -16,7 +22,11 @@ export const validateCommand = new Command("validate")
     "<project-root>",
     "path to the project root containing .agent-library.yml",
   )
-  .action(async (projectRoot: string) => {
+  .option(
+    "--no-resolve",
+    "skip include-resolution validation and validate manifest structure only",
+  )
+  .action(async (projectRoot: string, opts: ValidateOptions) => {
     const manifestPath = join(projectRoot, ".agent-library.yml");
 
     const loaded = await loadManifest(manifestPath);
@@ -36,7 +46,54 @@ export const validateCommand = new Command("validate")
 
     const manifest = ManifestSchema.parse(loaded.value);
     const absProjectRoot = resolve(projectRoot);
-    const homeRoot = resolveHomeRoot();
+
+    if (opts.resolve === false) {
+      process.stdout.write(`ok: ${manifestPath} is valid\n`);
+      process.exit(0);
+    }
+
+    if (!manifest.source) {
+      process.stderr.write(
+        "source: source is required; add a source block with type, repo, and ref\n",
+      );
+      process.exit(1);
+    }
+
+    const lockfilePath = join(absProjectRoot, ".agent-library.lock");
+    if (!existsSync(lockfilePath)) {
+      process.stderr.write(
+        "error: no lockfile found; run `agent-library sync` first, or pass `--no-resolve` to skip include-resolution validation\n",
+      );
+      process.exit(1);
+    }
+
+    const lockResult = await readLockfile(lockfilePath);
+    if (!lockResult.ok) {
+      process.stderr.write(`error: ${lockResult.error.message}\n`);
+      process.exit(1);
+    }
+    if (!lockResult.value?.source?.sha) {
+      process.stderr.write(
+        "error: lockfile has no pinned source SHA; run `agent-library sync` (without --home) to resolve from GitHub, or pass `--no-resolve` to skip include-resolution validation\n",
+      );
+      process.exit(1);
+    }
+
+    const sourceResult = await resolveSource(manifest.source, lockfilePath, {
+      update: false,
+    });
+    if (!sourceResult.ok) {
+      if (sourceResult.error.type === "git_sha_not_cached") {
+        process.stderr.write(
+          "error: locked SHA not in cache; run `sync --update`\n",
+        );
+      } else {
+        process.stderr.write(`error: ${sourceResult.error.message}\n`);
+      }
+      process.exit(1);
+    }
+
+    const homeRoot = sourceResult.value.homeRoot;
     const resolveCtx =
       manifest.scope === "home"
         ? ({ kind: "home", homeRoot } as const)
@@ -60,6 +117,6 @@ export const validateCommand = new Command("validate")
       process.exit(1);
     }
 
-    process.stdout.write(`✓ ${manifestPath} is valid\n`);
+    process.stdout.write(`ok: ${manifestPath} is valid\n`);
     process.exit(0);
   });

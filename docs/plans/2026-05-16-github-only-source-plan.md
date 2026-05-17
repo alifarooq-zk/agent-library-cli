@@ -429,7 +429,7 @@ Expected: PASS for the targeted suites (expand as needed if failures appear in o
 - Modify: `tests/integration/list.test.ts`
 - Modify: `tests/integration/validate.test.ts`
 
-- [ ] **Step 1: Update `list` tests**
+- [x] **Step 1: Update `list` tests**
 
 In `tests/integration/list.test.ts`:
 - Replace tests that rely on `resolveHomeRoot()` with tests that run `list` inside a project dir containing `.agent-library.yml` + `.agent-library.lock`. Assert that `list` reads the lockfile-pinned SHA, materialises from cache, and prints the catalogue.
@@ -437,7 +437,7 @@ In `tests/integration/list.test.ts`:
 - Add: `list` outside a project dir (no manifest, no `--home`) exits 1 with *"no manifest in current directory; pass `--home <path>` or run from a project root"*.
 - Add: `list` inside a project dir with a manifest but no lockfile yet runs `resolveSource()` against the manifest's `ref` (fetches HEAD) and prints the catalogue; warn that the result is not pinned.
 
-- [ ] **Step 2: Implement `list` changes**
+- [x] **Step 2: Implement `list` changes**
 
 Update `src/commands/list.ts`:
 - Remove the implicit `resolveHomeRoot()` default.
@@ -450,7 +450,7 @@ Update `src/commands/list.ts`:
   3. Else exit 1 with the no-manifest error.
 - Keep all subcommand variants (`list`, `list <domain>`, etc.) working against the resolved `homeRoot`.
 
-- [ ] **Step 3: Update `validate` tests**
+- [x] **Step 3: Update `validate` tests**
 
 In `tests/integration/validate.test.ts`:
 - Add: `validate` with manifest + lockfile (locked SHA in cache) validates structurally and resolves includes from the pinned tree. Offline path — no network.
@@ -458,7 +458,7 @@ In `tests/integration/validate.test.ts`:
 - Add: `validate --no-resolve` skips the include-resolution step and passes on manifest with no lockfile.
 - Update existing fixtures to include `source` + lockfile where needed.
 
-- [ ] **Step 4: Implement `validate` changes**
+- [x] **Step 4: Implement `validate` changes**
 
 Update `src/commands/validate.ts`:
 - Add `--no-resolve` option.
@@ -468,7 +468,7 @@ Update `src/commands/validate.ts`:
   3. Else exit 1 with the "run sync first" error.
 - Never fall back to `resolveHomeRoot()`.
 
-- [ ] **Step 5: Re-run targeted tests**
+- [x] **Step 5: Re-run targeted tests**
 
 Run: `bun test tests/integration/list.test.ts tests/integration/validate.test.ts`
 
@@ -489,41 +489,41 @@ This change produces five independently-surprising decisions. Each gets its own 
 - Modify: `docs/adr/README.md`
 - Modify: `CONTEXT.md` (append the five new ADR entries under "Related ADRs")
 
-- [ ] **Step 1: Write ADR 0011 — GitHub-only source**
+- [x] **Step 1: Write ADR 0011 — GitHub-only source**
 
 Context: local `~/.agent-library/` fallback was canonical; provenance was implicit.
 Decision: require a `source` block (GitHub repo + ref) in every manifest; remove the local fallback; canonical source is the GitHub repo at the resolved SHA.
 Consequences: breaking change for manifests without source; reproducible syncs across machines; `~/.agent-library/` keeps a role as a library-author dev checkout but is never consulted by default.
 
-- [ ] **Step 2: Write ADR 0012 — `--home` flag overloaded by subcommand**
+- [x] **Step 2: Write ADR 0012 — `--home` flag overloaded by subcommand**
 
 Context: a single `--home` flag has two distinct dev/test jobs — pointing at a pre-materialised library tree (for `sync <project>` / `init <project>`) and overriding the home-base directory (for `sync --global` / `init --global`).
 Decision: keep one flag, overloaded by subcommand. The `--global` presence/absence disambiguates the job. Considered splitting into `--library-root` and `--home-base`; rejected as more churn than the clarity gain warranted for a dev/test affordance.
 Consequences: `HOME_AGENT_LIBRARY` env var is only honoured for the library-tree job. Subcommand docs must spell out which job applies.
 
-- [ ] **Step 3: Write ADR 0013 — `init` materialises the source tree on demand**
+- [x] **Step 3: Write ADR 0013 — `init` materialises the source tree on demand**
 
 Context: under GitHub-only source, a new user has no local tree, but the include picker is a first-class init UX surface and must show what's available.
 Decision: after capturing repo/ref, `init` runs `resolveSource()` to materialise the tree, then drives the picker from the materialised result. First-ever init pays a one-time clone; subsequent inits against the same SHA hit cache. Network failure falls back to free-text input.
 Consequences: init now requires network by default; offline init still works but loses the picker; cache grows over time (bare-repo pruning remains future work).
 
-- [ ] **Step 4: Write ADR 0014 — `list` and `validate` are manifest-aware**
+- [x] **Step 4: Write ADR 0014 — `list` and `validate` are manifest-aware**
 
 Context: both commands previously walked `resolveHomeRoot()`. Under GitHub-only, there is no implicit local tree.
 Decision: `list` reads the project manifest, materialises the lockfile-pinned SHA (or manifest `ref` HEAD with a warning), and lists from there. `validate` requires the lockfile-pinned SHA for include-resolution; `--no-resolve` opts out for pre-sync structural-only validation.
 Consequences: both commands work in project context. `validate` errors on a fresh project without a lockfile unless `--no-resolve` is passed. CI gates that ran `validate` pre-sync must add `--no-resolve` or run `sync` first.
 
-- [ ] **Step 5: Write ADR 0015 — Lockfile source preserved under `--home`**
+- [x] **Step 5: Write ADR 0015 — Lockfile source preserved under `--home`**
 
 Context: `sync <project> --home <local-tree>` resolves no SHA, so it has no `LockfileSource` to record. Three options: drop the source block, preserve any prior block, or write a sentinel.
 Decision: preserve any prior `source` block; do not overwrite under `--home`. A project that has only ever sync'd with `--home` legitimately produces a lockfile with no `source` block.
 Consequences: dev-loop verifications don't damage provenance from real syncs. Lockfile is no longer monotonic with the most recent sync's source — it tracks the most recent *real* sync's source.
 
-- [ ] **Step 6: Update ADR index**
+- [x] **Step 6: Update ADR index**
 
 Add five entries in `docs/adr/README.md` and in [CONTEXT.md](../../CONTEXT.md)'s "Related ADRs" list.
 
-- [ ] **Step 7: (Optional) Quick doc check**
+- [x] **Step 7: (Optional) Quick doc check**
 
 Run: `bun test tests/unit/manifest.test.ts`
 

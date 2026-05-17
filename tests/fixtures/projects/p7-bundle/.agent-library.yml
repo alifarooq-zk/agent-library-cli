@@ -4,3 +4,7 @@ mode: generated
 target: claude
 include:
   - global
+source:
+  type: github
+  repo: org/repo
+  ref: main

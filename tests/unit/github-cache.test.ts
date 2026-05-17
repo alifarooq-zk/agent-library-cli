@@ -121,6 +121,18 @@ describe("materializeTree", () => {
     const result = await materializeTree(cachePath, COMMIT_SHA, dest);
     expect(result.ok).toBe(true);
   });
+
+  it("extracts tree when cache and destination paths contain spaces", async () => {
+    const cachePath = join(CACHE_DIR, "space path", "fetch test.git");
+    const fetchResult = await fetchBareRepo(BARE_REPO, cachePath);
+    expect(fetchResult.ok).toBe(true);
+
+    const dest = join(CACHE_DIR, "tree path with spaces", COMMIT_SHA);
+    const result = await materializeTree(cachePath, COMMIT_SHA, dest);
+    expect(result.ok).toBe(true);
+    const readmeExists = await Bun.file(join(dest, "README.md")).exists();
+    expect(readmeExists).toBe(true);
+  });
 });
 
 describe("hasCachedSha", () => {

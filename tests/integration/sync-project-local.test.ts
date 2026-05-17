@@ -6,7 +6,7 @@ const HOME = resolve("tests/fixtures/home-min");
 const PROJECT = resolve("tests/fixtures/projects/p6-local");
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -26,7 +26,7 @@ describe("sync project-local includes", () => {
   afterEach(cleanTargets);
 
   it("resolves ./ includes from the project-local source root", async () => {
-    const r = run(["sync", PROJECT]);
+    const r = run(["sync", "--home", HOME, PROJECT]);
     expect(r.code).toBe(0);
 
     const localTarget = join(

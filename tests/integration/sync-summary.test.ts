@@ -4,10 +4,10 @@ import { cpSync, mkdirSync, rmSync } from "node:fs";
 
 const HOME = resolve("tests/fixtures/home-min");
 const FIXTURE_PROJECT = resolve("tests/fixtures/projects/p2-mixed");
-const TEMP_PROJECT = join("/tmp", "al-test-summary-project");
+const TEMP_PROJECT = join(process.cwd(), ".tmp", "al-test-summary-project");
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -33,7 +33,7 @@ describe("sync summary", () => {
   });
 
   it("matches the spec format line-for-line", () => {
-    const r = run(["sync", TEMP_PROJECT]);
+    const r = run(["sync", "--home", HOME, TEMP_PROJECT]);
     expect(r.code).toBe(0);
     expect(r.stdout).toBe(
       [

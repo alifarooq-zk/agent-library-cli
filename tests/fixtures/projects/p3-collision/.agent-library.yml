@@ -4,3 +4,7 @@ target: claude
 include:
   - security/skills/review
   - testing/skills/review
+source:
+  type: github
+  repo: org/repo
+  ref: main

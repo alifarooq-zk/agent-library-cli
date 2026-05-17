@@ -5,10 +5,10 @@ import { stringify } from "yaml";
 
 const HOME = resolve("tests/fixtures/home-min");
 // Use a temporary copy so we can modify the manifest between runs
-const TEMP_PROJECT = join("/tmp", "al-test-stale-cleanup");
+const TEMP_PROJECT = join(process.cwd(), ".tmp", "al-test-stale-cleanup");
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -25,6 +25,7 @@ function setManifestIncludes(includes: string[]) {
     mode: "generated",
     target: "both",
     include: includes,
+    source: { type: "github", repo: "org/repo", ref: "main" },
   };
   writeFileSync(
     join(TEMP_PROJECT, ".agent-library.yml"),
@@ -50,7 +51,7 @@ describe("sync stale file cleanup", () => {
 
   it("removes stale files from prior sync after manifest shrinks", async () => {
     // Step 1: Sync with 3 artifacts (6 files across both targets)
-    const r1 = run(["sync", TEMP_PROJECT]);
+    const r1 = run(["sync", "--home", HOME, TEMP_PROJECT]);
     expect(r1.code).toBe(0);
 
     // Confirm all 6 files exist
@@ -70,7 +71,7 @@ describe("sync stale file cleanup", () => {
     setManifestIncludes(["global/skills/writing-plans"]);
 
     // Step 3: Sync again
-    const r2 = run(["sync", TEMP_PROJECT]);
+    const r2 = run(["sync", "--home", HOME, TEMP_PROJECT]);
     expect(r2.code).toBe(0);
 
     // Step 4: stdout must report 4 removed stale files
@@ -108,7 +109,7 @@ describe("sync stale file cleanup", () => {
   });
 
   it("removes stale generated skills whose marker follows frontmatter", async () => {
-    const r1 = run(["sync", TEMP_PROJECT]);
+    const r1 = run(["sync", "--home", HOME, TEMP_PROJECT]);
     expect(r1.code).toBe(0);
 
     setManifestIncludes([
@@ -116,7 +117,7 @@ describe("sync stale file cleanup", () => {
       "global/agents/security-reviewer",
     ]);
 
-    const r2 = run(["sync", TEMP_PROJECT]);
+    const r2 = run(["sync", "--home", HOME, TEMP_PROJECT]);
     expect(r2.code).toBe(0);
     // writing-plans has 2 source files (SKILL.md + template.md) × 2 targets = 4 stale
     expect(r2.stdout).toContain("Removed stale generated files: 4");
@@ -146,7 +147,7 @@ describe("sync stale file cleanup", () => {
   it("does not remove unmarked files that lack the generated marker", async () => {
     // Sync with only writing-plans
     setManifestIncludes(["global/skills/writing-plans"]);
-    run(["sync", TEMP_PROJECT]);
+    run(["sync", "--home", HOME, TEMP_PROJECT]);
 
     // Manually create an unmarked file inside the skill target directory
     const unmarkedPath = join(
@@ -163,14 +164,14 @@ describe("sync stale file cleanup", () => {
     );
 
     // Sync again with the same manifest — the unmarked file should survive
-    const r = run(["sync", TEMP_PROJECT]);
+    const r = run(["sync", "--home", HOME, TEMP_PROJECT]);
     expect(r.code).toBe(0);
     expect(existsSync(unmarkedPath)).toBe(true);
   });
 
   it("does not remove a stale unmarked file whose body contains the generated marker phrase", async () => {
     // Step 1: Sync with mixed artifacts so the command file is tracked in the lockfile.
-    const r1 = run(["sync", TEMP_PROJECT]);
+    const r1 = run(["sync", "--home", HOME, TEMP_PROJECT]);
     expect(r1.code).toBe(0);
 
     const staleButLocalPath = join(
@@ -192,7 +193,7 @@ describe("sync stale file cleanup", () => {
     // Step 2: Shrink the manifest so the tracked command file becomes stale.
     setManifestIncludes(["global/skills/writing-plans"]);
 
-    const r2 = run(["sync", TEMP_PROJECT]);
+    const r2 = run(["sync", "--home", HOME, TEMP_PROJECT]);
     expect(r2.code).toBe(0);
     expect(existsSync(staleButLocalPath)).toBe(true);
   });

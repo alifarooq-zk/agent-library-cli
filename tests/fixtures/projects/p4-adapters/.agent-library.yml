@@ -5,3 +5,7 @@ target: both
 include:
   - frontend/skills/react-useeffect
   - global/agents/security-reviewer
+source:
+  type: github
+  repo: org/repo
+  ref: main

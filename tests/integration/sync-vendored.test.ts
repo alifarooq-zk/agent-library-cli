@@ -7,11 +7,11 @@ import type { Lockfile } from "../../src/lockfile/schema.ts";
 
 const FIXTURE_HOME = resolve("tests/fixtures/home-min");
 const FIXTURE_PROJECT = resolve("tests/fixtures/projects/p5-vendored");
-const TEMP_HOME = join("/tmp", "al-test-vendored-home");
-const TEMP_PROJECT = join("/tmp", "al-test-vendored-project");
+const TEMP_HOME = join(process.cwd(), ".tmp", "al-test-vendored-home");
+const TEMP_PROJECT = join(process.cwd(), ".tmp", "al-test-vendored-project");
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: TEMP_HOME },
   });
   return {
@@ -74,7 +74,7 @@ describe("sync vendored", () => {
   });
 
   it("writes, updates only clean targets, and protects local edits", async () => {
-    const first = run(["sync", TEMP_PROJECT]);
+    const first = run(["sync", "--home", TEMP_HOME, TEMP_PROJECT]);
     expect(first.code).toBe(0);
 
     const target = targetPath();
@@ -87,7 +87,7 @@ describe("sync vendored", () => {
     await readProjectLockfile();
     expect(await targetHashFromLockfile()).toBe(await hashFile(target));
 
-    const second = run(["sync", TEMP_PROJECT]);
+    const second = run(["sync", "--home", TEMP_HOME, TEMP_PROJECT]);
     expect(second.code).toBe(0);
     expect(await Bun.file(target).text()).toBe(firstContent);
     expect(second.stdout).toContain("Vendored files skipped (locally edited): 0");
@@ -98,7 +98,7 @@ describe("sync vendored", () => {
       `${originalSource}\n\nUpstream vendored update.\n`,
     );
     const hashBeforeSourceChangeSync = await targetHashFromLockfile();
-    const third = run(["sync", TEMP_PROJECT]);
+    const third = run(["sync", "--home", TEMP_HOME, TEMP_PROJECT]);
     expect(third.code).toBe(0);
     const updatedContent = await Bun.file(target).text();
     expect(updatedContent).toContain("Upstream vendored update.");
@@ -110,7 +110,7 @@ describe("sync vendored", () => {
       sourcePath(),
       `${originalSource}\n\nUpstream vendored update.\n\nSecond upstream update.\n`,
     );
-    const fourth = run(["sync", TEMP_PROJECT]);
+    const fourth = run(["sync", "--home", TEMP_HOME, TEMP_PROJECT]);
     expect(fourth.code).toBe(0);
     const locallyEditedContent = await Bun.file(target).text();
     expect(locallyEditedContent).toContain("LOCAL EDIT");
@@ -121,7 +121,7 @@ describe("sync vendored", () => {
 
     rmSync(lockfilePath(), { force: true });
     const contentBeforePreexistingSync = await Bun.file(target).text();
-    const fifth = run(["sync", TEMP_PROJECT]);
+    const fifth = run(["sync", "--home", TEMP_HOME, TEMP_PROJECT]);
     expect(fifth.code).toBe(0);
     expect(await Bun.file(target).text()).toBe(contentBeforePreexistingSync);
     expect(fifth.stderr).toContain(

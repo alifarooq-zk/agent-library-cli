@@ -10,7 +10,7 @@ const FIXTURE = resolve("tests/fixtures/projects/p2-mixed");
 let PROJECT: string;
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -30,7 +30,7 @@ describe("sync generated mixed (commands, agents, dual targets)", () => {
   });
 
   it("writes all 6 target files with generated headers", async () => {
-    const r = run(["sync", PROJECT]);
+    const r = run(["sync", "--home", HOME, PROJECT]);
     expect(r.code).toBe(0);
 
     const expectedFiles = [
@@ -56,7 +56,7 @@ describe("sync generated mixed (commands, agents, dual targets)", () => {
   });
 
   it("skill SKILL.md contains original body", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
     const content = await Bun.file(
       join(PROJECT, ".claude", "skills", "writing-plans", "SKILL.md"),
     ).text();
@@ -65,7 +65,7 @@ describe("sync generated mixed (commands, agents, dual targets)", () => {
   });
 
   it("command file contains original body", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
     const content = await Bun.file(
       join(PROJECT, ".claude", "commands", "review-pr.md"),
     ).text();
@@ -74,7 +74,7 @@ describe("sync generated mixed (commands, agents, dual targets)", () => {
   });
 
   it("agent file contains original body", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
     const content = await Bun.file(
       join(PROJECT, ".agents", "agents", "security-reviewer.md"),
     ).text();

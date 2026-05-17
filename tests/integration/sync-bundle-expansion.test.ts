@@ -10,7 +10,7 @@ const FIXTURE = resolve("tests/fixtures/projects/p7-bundle");
 let PROJECT: string;
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -30,7 +30,7 @@ describe("sync bundle expansion lockfile", () => {
   });
 
   it("records original bundle includes and expanded artifact ids", async () => {
-    const r = run(["sync", PROJECT]);
+    const r = run(["sync", "--home", HOME, PROJECT]);
     expect(r.code).toBe(0);
 
     const lockfileResult = await readLockfile(join(PROJECT, ".agent-library.lock"));
@@ -47,7 +47,7 @@ describe("sync bundle expansion lockfile", () => {
   });
 
   it("copies bundled skill files alongside SKILL.md", async () => {
-    const r = run(["sync", PROJECT]);
+    const r = run(["sync", "--home", HOME, PROJECT]);
     expect(r.code).toBe(0);
 
     // p7-bundle targets claude only, so check .claude
@@ -62,7 +62,7 @@ describe("sync bundle expansion lockfile", () => {
   });
 
   it("bundled markdown file carries the generated ownership header", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
 
     const content = await Bun.file(
       join(PROJECT, ".claude", "skills", "writing-plans", "template.md"),
@@ -72,7 +72,7 @@ describe("sync bundle expansion lockfile", () => {
   });
 
   it("bundled file body is preserved in the target", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
 
     const content = await Bun.file(
       join(PROJECT, ".claude", "skills", "writing-plans", "template.md"),
@@ -81,7 +81,7 @@ describe("sync bundle expansion lockfile", () => {
   });
 
   it("lockfile records bundled file as a distinct source entry in the skill artifact", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
 
     const lockfileResult = await readLockfile(join(PROJECT, ".agent-library.lock"));
     expect(lockfileResult.ok).toBe(true);
@@ -93,7 +93,7 @@ describe("sync bundle expansion lockfile", () => {
       (a) => a.id === "global/skills/writing-plans",
     );
     expect(skill).toBeDefined();
-    const sources = skill!.files.map((f) => f.source).sort();
+    const sources = skill!.files.map((f) => f.source.replace(/\\/g, "/")).sort();
     expect(sources).toContain("global/skills/writing-plans/SKILL.md");
     expect(sources).toContain("global/skills/writing-plans/template.md");
   });

@@ -7,7 +7,7 @@ const HOME = resolve("tests/fixtures/home-min");
 const PROJECT = resolve("tests/fixtures/projects/p4-adapters");
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -29,12 +29,12 @@ describe("sync generated with adapters", () => {
   afterEach(cleanTargets);
 
   it("exits 0", () => {
-    const r = run(["sync", PROJECT]);
+    const r = run(["sync", "--home", HOME, PROJECT]);
     expect(r.code).toBe(0);
   });
 
   it(".claude skill SKILL.md contains Claude-specific adapter content", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
     const content = await Bun.file(
       join(PROJECT, ".claude", "skills", "react-useeffect", "SKILL.md"),
     ).text();
@@ -42,7 +42,7 @@ describe("sync generated with adapters", () => {
   });
 
   it(".agents skill SKILL.md contains Codex-specific adapter content", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
     const content = await Bun.file(
       join(PROJECT, ".agents", "skills", "react-useeffect", "SKILL.md"),
     ).text();
@@ -50,7 +50,7 @@ describe("sync generated with adapters", () => {
   });
 
   it(".agents skill SKILL.md does NOT contain Claude-specific content", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
     const content = await Bun.file(
       join(PROJECT, ".agents", "skills", "react-useeffect", "SKILL.md"),
     ).text();
@@ -58,7 +58,7 @@ describe("sync generated with adapters", () => {
   });
 
   it(".claude agent security-reviewer.md contains Claude variant adapter content", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
     const content = await Bun.file(
       join(PROJECT, ".claude", "agents", "security-reviewer.md"),
     ).text();
@@ -66,7 +66,7 @@ describe("sync generated with adapters", () => {
   });
 
   it(".agents agent security-reviewer.md does NOT contain Claude variant (no codex adapter)", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
     const content = await Bun.file(
       join(PROJECT, ".agents", "agents", "security-reviewer.md"),
     ).text();
@@ -74,7 +74,7 @@ describe("sync generated with adapters", () => {
   });
 
   it("records applied and absent adapters as lockfile discriminants", async () => {
-    const r = run(["sync", PROJECT]);
+    const r = run(["sync", "--home", HOME, PROJECT]);
     expect(r.code).toBe(0);
 
     const result = await readLockfile(join(PROJECT, ".agent-library.lock"));
@@ -83,7 +83,18 @@ describe("sync generated with adapters", () => {
 
     const targets = result.value.artifacts.flatMap((artifact) =>
       artifact.files.flatMap((file) =>
-        file.targets.map((target) => [target.path, target.adapter] as const),
+        file.targets.map(
+          (target) =>
+            [
+              target.path.replace(/\\/g, "/"),
+              target.adapter.kind === "applied"
+                ? {
+                    ...target.adapter,
+                    source: target.adapter.source.replace(/\\/g, "/"),
+                  }
+                : target.adapter,
+            ] as const,
+        ),
       ),
     );
 

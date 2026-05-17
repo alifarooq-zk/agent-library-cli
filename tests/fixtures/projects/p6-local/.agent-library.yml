@@ -5,3 +5,7 @@ target: claude
 include:
   - ./product/skills/domain-review
   - global/skills/writing-plans
+source:
+  type: github
+  repo: org/repo
+  ref: main

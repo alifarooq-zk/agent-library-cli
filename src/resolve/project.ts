@@ -29,7 +29,7 @@ export function resolveLocalIncludeEntry(
     });
   }
 
-  const result = expandBundle(localRoot, relativeEntry);
+  const result = expandBundle(localRoot, relativeEntry.replace(/\\/g, "/"));
 
   if (!result.ok) return result;
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: {
       ...process.env,
       HOME_AGENT_LIBRARY: "tests/fixtures/home-min",

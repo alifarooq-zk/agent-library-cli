@@ -13,7 +13,7 @@ const FIXTURE = resolve("tests/fixtures/projects/p2-mixed");
 let PROJECT: string;
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -42,7 +42,7 @@ describe("sync lockfile", () => {
   });
 
   it("writes a valid lockfile after sync", async () => {
-    const r = run(["sync", PROJECT]);
+    const r = run(["sync", "--home", HOME, PROJECT]);
     expect(r.code).toBe(0);
 
     const lockfile = await readProjectLockfile();
@@ -53,7 +53,7 @@ describe("sync lockfile", () => {
   });
 
   it("lockfile has correct cliVersion and artifact count", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
 
     const lockfile = await readProjectLockfile();
     expect(lockfile.version).toBe(1);
@@ -62,7 +62,7 @@ describe("sync lockfile", () => {
   });
 
   it("lockfile sourceHash matches actual file content", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
 
     const lockfile = await readProjectLockfile();
 
@@ -76,7 +76,7 @@ describe("sync lockfile", () => {
   });
 
   it("lockfile records correct mode, target, and include", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
 
     const lockfile = await readProjectLockfile();
     expect(lockfile.mode).toBe("generated");
@@ -89,14 +89,14 @@ describe("sync lockfile", () => {
   });
 
   it("lockfile syncedAt is a valid ISO 8601 date string", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
 
     const lockfile = await readProjectLockfile();
     expect(new Date(lockfile.syncedAt).toISOString()).toBe(lockfile.syncedAt);
   });
 
   it("lockfile uses discriminated adapter entries", async () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
 
     const lockfile = await readProjectLockfile();
     for (const artifact of lockfile.artifacts) {

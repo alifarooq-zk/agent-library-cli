@@ -18,15 +18,14 @@ describe("ManifestSchema source block", () => {
     }
   });
 
-  it("parses a manifest without source (backward compat)", () => {
+  it("rejects a manifest without source", () => {
     const result = ManifestSchema.safeParse({
       version: 1,
       mode: "generated",
       target: "claude",
       include: ["global/skills/foo"],
     });
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.source).toBeUndefined();
+    expect(result.success).toBe(false);
   });
 
   it("rejects source.type other than github", () => {

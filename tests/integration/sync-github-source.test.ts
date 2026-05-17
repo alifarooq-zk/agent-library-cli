@@ -22,12 +22,17 @@ let repo: TestBareRepo;
 let cacheDir: string;
 let projectDir: string;
 
-function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+function run(
+  args: string[],
+  env: Record<string, string> = {},
+): { stdout: string; stderr: string; code: number } {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: {
       ...process.env,
       AGENT_LIBRARY_INTERNAL_TEST_REPO_PATH: repo.bareRepoPath,
       AGENT_LIBRARY_CACHE_DIR: cacheDir,
+      NO_COLOR: "1",
+      ...env,
     },
   });
   return {
@@ -55,7 +60,7 @@ beforeEach(() => {
       version: 1,
       mode: "generated",
       target: "claude",
-      include: ["global/skills/writing-plans"],
+      include: ["frontend/skills/react-useeffect"],
       source: { type: "github", repo: "org/repo", ref: "main" },
     }),
   );
@@ -105,7 +110,7 @@ describe("sync with github source", () => {
           ref: "main",
           fetchedAt: new Date().toISOString(),
         },
-        include: ["global/skills/writing-plans"],
+        include: ["frontend/skills/react-useeffect"],
         artifacts: [],
       }),
     );
@@ -127,5 +132,134 @@ describe("sync with github source", () => {
     expect(lockResult.ok).toBe(true);
     if (!lockResult.ok || !lockResult.value) return;
     expect(lockResult.value.source?.sha).toBe(repo.commitSha);
+  });
+
+  it("sync --global errors when the home manifest is missing", () => {
+    const homeBase = mkdtempSync(join(tmpdir(), "al-sync-global-home-"));
+    try {
+      const result = run(["sync", "--global", "--home", homeBase]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(
+        `error: no home manifest found at ${join(homeBase, ".agent-library.yml")}; run \`agent-lib init --global\` to create one`,
+      );
+    } finally {
+      rmSync(homeBase, { recursive: true, force: true });
+    }
+  });
+
+  it("sync --global errors when the home manifest is not home scoped", () => {
+    const homeBase = mkdtempSync(join(tmpdir(), "al-sync-global-home-"));
+    try {
+      writeFileSync(
+        join(homeBase, ".agent-library.yml"),
+        stringify({
+          version: 1,
+          mode: "generated",
+          target: "claude",
+          include: ["frontend/skills/react-useeffect"],
+          source: { type: "github", repo: "org/repo", ref: "main" },
+        }),
+      );
+
+      const result = run(["sync", "--global", "--home", homeBase]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("must set scope: home");
+    } finally {
+      rmSync(homeBase, { recursive: true, force: true });
+    }
+  });
+
+  it("sync --global writes the home lockfile and targets under the home base", async () => {
+    const homeBase = mkdtempSync(join(tmpdir(), "al-sync-global-home-"));
+    try {
+      writeFileSync(
+        join(homeBase, ".agent-library.yml"),
+        stringify({
+          version: 1,
+          scope: "home",
+          mode: "generated",
+          target: "claude",
+          include: ["global/skills/writing-plans"],
+          source: { type: "github", repo: "org/repo", ref: "main" },
+        }),
+      );
+
+      const result = run(["sync", "--global", "--home", homeBase]);
+      expect(result.code).toBe(0);
+      expect(await Bun.file(join(homeBase, ".agent-library.lock")).exists()).toBe(
+        true,
+      );
+      expect(
+        await Bun.file(
+          join(homeBase, ".claude", "skills", "writing-plans", "SKILL.md"),
+        ).exists(),
+      ).toBe(true);
+
+      const lockResult = await readLockfile(
+        join(homeBase, ".agent-library.lock"),
+      );
+      expect(lockResult.ok).toBe(true);
+      if (!lockResult.ok || !lockResult.value) return;
+      expect(lockResult.value.source?.sha).toBe(repo.commitSha);
+    } finally {
+      rmSync(homeBase, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves lockfile source block across a --home dev-loop sync", async () => {
+    const first = run(["sync", projectDir]);
+    expect(first.code).toBe(0);
+
+    const before = await readLockfile(join(projectDir, ".agent-library.lock"));
+    expect(before.ok).toBe(true);
+    if (!before.ok || !before.value?.source) return;
+
+    const second = run([
+      "sync",
+      "--home",
+      resolve("tests/fixtures/home-min"),
+      projectDir,
+    ]);
+    expect(second.code).toBe(0);
+
+    const after = await readLockfile(join(projectDir, ".agent-library.lock"));
+    expect(after.ok).toBe(true);
+    if (!after.ok || !after.value) return;
+    expect(after.value.source).toEqual(before.value.source);
+  });
+
+  it("writes lockfile without source block on a --home sync with no prior lockfile", async () => {
+    const result = run([
+      "sync",
+      "--home",
+      resolve("tests/fixtures/home-min"),
+      projectDir,
+    ]);
+    expect(result.code).toBe(0);
+
+    const lockResult = await readLockfile(
+      join(projectDir, ".agent-library.lock"),
+    );
+    expect(lockResult.ok).toBe(true);
+    if (!lockResult.ok || !lockResult.value) return;
+    expect(lockResult.value.source).toBeUndefined();
+  });
+
+  it("uses HOME_AGENT_LIBRARY as a project sync library-tree override", async () => {
+    const result = run(["sync", projectDir], {
+      HOME_AGENT_LIBRARY: resolve("tests/fixtures/home-min"),
+      AGENT_LIBRARY_INTERNAL_TEST_REPO_PATH: join(
+        projectDir,
+        "missing-remote.git",
+      ),
+    });
+    expect(result.code).toBe(0);
+
+    const lockResult = await readLockfile(
+      join(projectDir, ".agent-library.lock"),
+    );
+    expect(lockResult.ok).toBe(true);
+    if (!lockResult.ok || !lockResult.value) return;
+    expect(lockResult.value.source).toBeUndefined();
   });
 });

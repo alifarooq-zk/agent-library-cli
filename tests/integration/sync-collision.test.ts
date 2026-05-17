@@ -6,7 +6,7 @@ const HOME = resolve("tests/fixtures/home-min");
 const PROJECT = resolve("tests/fixtures/projects/p3-collision");
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -27,15 +27,15 @@ describe("sync collision detection", () => {
   afterEach(cleanTargets);
 
   it("exits 1 and names both source artifact ids and the conflicting target path", () => {
-    const r = run(["sync", PROJECT]);
+    const r = run(["sync", "--home", HOME, PROJECT]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain("security/skills/review");
     expect(r.stderr).toContain("testing/skills/review");
-    expect(r.stderr).toMatch(/skills\/review\/SKILL\.md/);
+    expect(r.stderr.replace(/\\/g, "/")).toMatch(/skills\/review\/SKILL\.md/);
   });
 
   it("does not write any target files when a collision is detected", () => {
-    run(["sync", PROJECT]);
+    run(["sync", "--home", HOME, PROJECT]);
     expect(existsSync(join(PROJECT, ".claude"))).toBe(false);
     expect(existsSync(join(PROJECT, ".agents"))).toBe(false);
   });

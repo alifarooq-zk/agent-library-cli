@@ -23,6 +23,7 @@ export interface GeneratedSyncResult {
 
 export interface SyncRunOptions {
   dryRun?: boolean;
+  lockfilePath?: string;
 }
 
 export type GeneratedSyncError =
@@ -40,7 +41,8 @@ export async function runGeneratedSync(
   plan: SyncPlan,
   options: SyncRunOptions = {},
 ): Promise<Result<GeneratedSyncResult, GeneratedSyncError>> {
-  const lockfilePath = join(plan.projectRoot, ".agent-library.lock");
+  const lockfilePath =
+    options.lockfilePath ?? join(plan.projectRoot, ".agent-library.lock");
 
   // 1. Read previous lockfile before writing anything
   const previousLockfileResult = await readLockfile(lockfilePath);

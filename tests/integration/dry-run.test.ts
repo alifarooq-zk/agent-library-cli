@@ -4,10 +4,10 @@ import { cpSync, mkdirSync, rmSync } from "node:fs";
 
 const HOME = resolve("tests/fixtures/home-min");
 const FIXTURE_PROJECT = resolve("tests/fixtures/projects/p2-mixed");
-const TEMP_PROJECT = join("/tmp", "al-test-dry-run-project");
+const TEMP_PROJECT = join(process.cwd(), ".tmp", "al-test-dry-run-project");
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -33,10 +33,11 @@ describe("sync --dry-run", () => {
   });
 
   it("prints prospective writes without touching disk", async () => {
-    const r = run(["sync", "--dry-run", TEMP_PROJECT]);
+    const r = run(["sync", "--home", HOME, "--dry-run", TEMP_PROJECT]);
     expect(r.code).toBe(0);
 
     const dryRunLines = r.stdout
+      .replace(/\\/g, "/")
       .split("\n")
       .filter((line) => line.startsWith("[dry-run] would write "));
     expect(dryRunLines).toHaveLength(8); // 3 artifacts × 2 targets + 2 bundled template.md
@@ -61,7 +62,7 @@ describe("sync --dry-run", () => {
   });
 
   it("prints stale removals without deleting generated files", async () => {
-    const first = run(["sync", TEMP_PROJECT]);
+    const first = run(["sync", "--home", HOME, TEMP_PROJECT]);
     expect(first.code).toBe(0);
 
     await Bun.write(
@@ -73,6 +74,10 @@ describe("sync --dry-run", () => {
         "target: both",
         "include:",
         "  - global/skills/writing-plans",
+        "source:",
+        "  type: github",
+        "  repo: org/repo",
+        "  ref: main",
         "",
       ].join("\n"),
     );
@@ -92,12 +97,13 @@ describe("sync --dry-run", () => {
     expect(await Bun.file(staleCommand).exists()).toBe(true);
     expect(await Bun.file(staleAgent).exists()).toBe(true);
 
-    const dryRun = run(["sync", "--dry-run", TEMP_PROJECT]);
+    const dryRun = run(["sync", "--home", HOME, "--dry-run", TEMP_PROJECT]);
     expect(dryRun.code).toBe(0);
-    expect(dryRun.stdout).toContain(
+    const normalizedStdout = dryRun.stdout.replace(/\\/g, "/");
+    expect(normalizedStdout).toContain(
       "[dry-run] would remove .agents/commands/review-pr.md",
     );
-    expect(dryRun.stdout).toContain(
+    expect(normalizedStdout).toContain(
       "[dry-run] would remove .claude/agents/security-reviewer.md",
     );
     expect(await Bun.file(staleCommand).exists()).toBe(true);

@@ -79,10 +79,25 @@ describe("validateManifest", () => {
       mode: "generated",
       target: "both",
       include: ["frontend/skills/react-useeffect"],
+      source: { type: "github", repo: "org/repo", ref: "main" },
     });
     expect(parsed.success).toBe(true);
     if (!parsed.success) return;
     expect(parsed.data.scope).toBe("project");
+  });
+
+  it("rejects missing source with a clear error message", () => {
+    const issues = validateManifest({
+      version: 1,
+      mode: "generated",
+      target: "both",
+      include: ["frontend/skills/react-useeffect"],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toBe("source");
+    expect(issues[0].message).toBe(
+      "source is required; add a source block with type, repo, and ref",
+    );
   });
 
   it("accepts a home-scoped valid manifest fixture", async () => {
@@ -95,7 +110,7 @@ describe("validateManifest", () => {
     expect(parsed.data.scope).toBe("home");
   });
 
-  it("rejects direct global includes in project scope", () => {
+  it("rejects missing source before global checks (include: global)", () => {
     const issues = validateManifest({
       version: 1,
       mode: "generated",
@@ -103,16 +118,14 @@ describe("validateManifest", () => {
       include: ["global"],
     });
 
-    expect(issues).toEqual([
-      {
-        path: "",
-        message:
-          '"global" domain is reserved for the home manifest. Remove it from include or re-run `init --global`.',
-      },
-    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toBe("source");
+    expect(issues[0].message).toBe(
+      "source is required; add a source block with type, repo, and ref",
+    );
   });
 
-  it("rejects global artifact paths in project scope", () => {
+  it("rejects missing source before global checks (include: global/skills)", () => {
     const issues = validateManifest({
       version: 1,
       mode: "generated",
@@ -120,11 +133,14 @@ describe("validateManifest", () => {
       include: ["global/skills/writing-plans"],
     });
 
-    expect(issues[0].path).toBe("");
-    expect(issues[0].message).toContain('"global" domain is reserved');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toBe("source");
+    expect(issues[0].message).toBe(
+      "source is required; add a source block with type, repo, and ref",
+    );
   });
 
-  it("allows global includes in project scope when source is set", () => {
+  it("rejects global includes in project scope even with source", () => {
     const issues = validateManifest({
       version: 1,
       mode: "generated",
@@ -132,7 +148,9 @@ describe("validateManifest", () => {
       include: ["global/skills/writing-plans"],
       source: { type: "github", repo: "org/repo", ref: "main" },
     });
-    expect(issues).toEqual([]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toBe("");
+    expect(issues[0].message).toContain('"global" domain is reserved');
   });
 
   it("allows global includes in home scope", () => {
@@ -142,6 +160,7 @@ describe("validateManifest", () => {
       mode: "generated",
       target: "both",
       include: ["global", "global/skills/writing-plans"],
+      source: { type: "github", repo: "org/repo", ref: "main" },
     });
 
     expect(issues).toEqual([]);
@@ -162,10 +181,10 @@ describe("validateManifest", () => {
 
 describe("validateSkillSpecs", () => {
   it("rejects skills without YAML frontmatter", async () => {
-    const root = join("/tmp", "agent-library-no-frontmatter-skill");
+    const root = "/tmp/agent-library-no-frontmatter-skill";
     rmSync(root, { recursive: true, force: true });
     mkdirSync(root, { recursive: true });
-    await Bun.write(join(root, "SKILL.md"), "# Missing frontmatter\n");
+    await Bun.write(`${root}/SKILL.md`, "# Missing frontmatter\n");
 
     try {
       const issues = await validateSkillSpecs([makeSkillArtifact(root)]);
@@ -176,10 +195,10 @@ describe("validateSkillSpecs", () => {
   });
 
   it("requires the Agent Skills description field", async () => {
-    const root = join("/tmp", "agent-library-missing-description-skill");
+    const root = "/tmp/agent-library-missing-description-skill";
     rmSync(root, { recursive: true, force: true });
     mkdirSync(root, { recursive: true });
-    await Bun.write(join(root, "SKILL.md"), "---\nname: example\n---\n");
+    await Bun.write(`${root}/SKILL.md`, "---\nname: example\n---\n");
 
     try {
       const issues = await validateSkillSpecs([makeSkillArtifact(root)]);
@@ -197,6 +216,6 @@ function makeSkillArtifact(sourceRoot: string): Artifact {
     basename: "example",
     libraryRoot: "/tmp",
     rootDir: sourceRoot,
-    primarySourceFile: join(sourceRoot, "SKILL.md"),
+    primarySourceFile: `${sourceRoot}/SKILL.md`,
   });
 }

@@ -123,17 +123,36 @@ export async function materializeTree(
   }
 
   const tmpPath = `${destPath}.tmp`;
+  const archivePath = `${destPath}.tar`;
   if (existsSync(tmpPath)) rmSync(tmpPath, { recursive: true, force: true });
+  if (existsSync(archivePath)) rmSync(archivePath, { force: true });
   mkdirSync(tmpPath, { recursive: true });
 
-  const extractResult = await ResultKit.fromPromise(
-    Bun.$`git -C ${cachePath} archive ${sha} | tar -x -C ${tmpPath}`.quiet(),
+  const archiveResult = await ResultKit.fromPromise(
+    Bun.$`git -C ${cachePath} archive ${sha} --format=tar --output=${archivePath}`.quiet(),
     (cause) => ({
       type: "git_cache_corrupt" as const,
-      message: `failed to materialize tree for sha ${sha} from ${cachePath}`,
+      message: `failed to archive tree for sha ${sha} from ${cachePath}: ${errorText(cause)}`,
       cause,
     }),
   );
+
+  if (!archiveResult.ok) {
+    rmSync(tmpPath, { recursive: true, force: true });
+    rmSync(archivePath, { force: true });
+    return archiveResult;
+  }
+
+  const extractResult = await ResultKit.fromPromise(
+    Bun.$`tar -xf ${archivePath} -C ${tmpPath}`.quiet(),
+    (cause) => ({
+      type: "git_cache_corrupt" as const,
+      message: `failed to materialize tree for sha ${sha} from ${cachePath}: ${errorText(cause)}`,
+      cause,
+    }),
+  );
+
+  rmSync(archivePath, { force: true });
 
   if (!extractResult.ok) {
     rmSync(tmpPath, { recursive: true, force: true });
@@ -144,7 +163,7 @@ export async function materializeTree(
     rename(tmpPath, destPath),
     (cause) => ({
       type: "git_cache_corrupt" as const,
-      message: `failed to finalize tree for sha ${sha}: rename failed`,
+      message: `failed to finalize tree for sha ${sha}: rename failed: ${errorText(cause)}`,
       cause,
     }),
   );

@@ -44,7 +44,7 @@ export function artifactBasename(value: string): ArtifactBasename {
 }
 
 export function absolutePath(value: string): AbsolutePath {
-  if (!value.startsWith("/")) {
+  if (!value.startsWith("/") && !/^[a-zA-Z]:[\\/]/.test(value)) {
     throw new Error(`Expected an absolute path but got: ${value}`);
   }
   return value as AbsolutePath;

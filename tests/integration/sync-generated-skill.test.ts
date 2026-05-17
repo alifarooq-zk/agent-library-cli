@@ -6,7 +6,7 @@ const HOME = resolve("tests/fixtures/home-min");
 const PROJECT = resolve("tests/fixtures/projects/p1-skill-only");
 
 function run(args: string[]): { stdout: string; stderr: string; code: number } {
-  const result = Bun.spawnSync(["./bin/agent-library", ...args], {
+  const result = Bun.spawnSync(["bun", "run", "src/cli.ts", ...args], {
     env: { ...process.env, HOME_AGENT_LIBRARY: HOME },
   });
   return {
@@ -26,7 +26,7 @@ describe("sync generated skill", () => {
   afterEach(cleanTargets);
 
   it("writes SKILL.md with frontmatter before the generated header", async () => {
-    const r = run(["sync", PROJECT]);
+    const r = run(["sync", "--home", HOME, PROJECT]);
     expect(r.code).toBe(0);
 
     const target = join(
@@ -55,11 +55,11 @@ describe("sync generated skill", () => {
     const badManifestDir = resolve("tests/fixtures/projects/p1-bad-name-temp");
     await Bun.write(
       join(badManifestDir, ".agent-library.yml"),
-      "version: 1\nmode: generated\ntarget: claude\ninclude:\n  - frontend/skills/bad-name\n",
+      "version: 1\nmode: generated\ntarget: claude\ninclude:\n  - frontend/skills/bad-name\nsource:\n  type: github\n  repo: org/repo\n  ref: main\n",
     );
 
     try {
-      const r = run(["sync", badManifestDir]);
+      const r = run(["sync", "--home", HOME, badManifestDir]);
       expect(r.code).toBe(1);
       expect(r.stderr).toMatch(/name.*does not match/i);
     } finally {
